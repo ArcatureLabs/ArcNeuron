@@ -1,0 +1,254 @@
+% ArcNeuron paper draft.
+% This source is intentionally self-contained and compiles with XeLaTeX.
+\documentclass[10pt]{article}
+
+% geometry keeps the draft compact without forcing a conference template too early.
+\usepackage[a4paper,margin=2.2cm]{geometry}
+% fontspec lets XeLaTeX write Vietnamese names and examples directly as UTF-8 text.
+\usepackage{fontspec}
+% amsmath provides the few equations used to state the architecture precisely.
+\usepackage{amsmath}
+% booktabs gives readable experimental tables without heavy grid lines.
+\usepackage{booktabs}
+% microtype improves line breaking and spacing in a plain article layout.
+\usepackage{microtype}
+% hyperref makes references and bibliography links useful in the generated PDF.
+\usepackage[hidelinks]{hyperref}
+% enumitem keeps short lists from wasting vertical space.
+\usepackage{enumitem}
+
+% The default Latin Modern family is widely available in TeX distributions and needs no bundled font file.
+\setmainfont{DejaVu Serif}
+\setsansfont{DejaVu Sans}
+\setmonofont{DejaVu Sans Mono}
+
+% Keep paragraph rhythm closer to a normal technical manuscript than a generated report.
+\setlength{\parindent}{1.1em}
+\setlength{\parskip}{0.25em}
+
+\title{ArcNeuron: Reusing Depth for a Small Language Model That Can Spend More Compute on Reasoning}
+\author{Lê Hùng Quang Minh\\ArcatureLabs\\\texttt{lehungquangminh2011@gmail.com}}
+\date{August 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+ArcNeuron is an experimental decoder-only language model built around one simple question: can a small model reuse the same neural computation several times and obtain a useful reasoning benefit without turning the runtime into a collection of external rules? The model has a short prelude, a shared recurrent Transformer core, and a short coda. The core is applied repeatedly to an evolving hidden state while the original encoded context is injected at every iteration. Training remains ordinary next-token prediction on natural text. A later ``tuning'' stage simply continues the same objective at a lower learning rate on a small hand-guided corpus; it does not attach a classifier, symbolic solver, reward model, retrieval system, or task-specific adapter. This paper describes the architecture, the training discipline, and the experiments required before making claims about reasoning. The design is deliberately small enough to reproduce on a single GPU and simple enough that the full neural architecture fits in one Python file.
+\end{abstract}
+
+\section{Why another small language model?}
+
+Large language models can hide weak experimental ideas behind scale. If a model has billions of parameters and has read a large fraction of the public web, it becomes difficult to tell whether a new behavior comes from the proposed mechanism, memorization, or simply more capacity. ArcNeuron starts from the opposite direction. The first model is intended to be small, the architecture is intentionally boring except for recurrent depth, and every proposed advantage has an ablation that can falsify it.
+
+The project is motivated by three practical requirements. First, new concepts should not need thousands of nearly identical examples before they become usable. Second, harder problems should be allowed to consume more neural computation without allocating a different set of parameters for every extra step. Third, the final system must remain a normal language model: it reads token sequences and predicts token sequences. Python may schedule computation, but Python must not contain the knowledge or logic that makes an answer correct.
+
+This distinction is important. ArcNeuron is not a symbolic reasoner with a neural front end. There is no dictionary mapping \texttt{chi} to \texttt{chân}, no rule saying that a mammal is an animal, and no branch that detects a mathematics question and calls a hidden solver. If the trained checkpoint is moved to another runtime that implements the same tensor operations, the model should produce the same distribution up to ordinary numerical differences.
+
+\section{Architecture}
+
+ArcNeuron is a causal decoder with three stages. Let $E(x)$ be token embeddings followed by a small prelude Transformer. The prelude output is called the context $c$ and also initializes the recurrent state:
+
+\begin{align}
+    c &= P(E(x)), \\
+    h_0 &= c.
+\end{align}
+
+A shared recurrent core $R$ is then applied $d$ times. The core receives both the current state and the unchanged prelude context:
+
+\begin{align}
+    h_{i+1} = R([h_i;c]), \qquad i=0,\ldots,d-1,
+\end{align}
+
+where $[h_i;c]$ denotes concatenation followed by a learned linear projection back to model width. A coda $C$ and a tied language-model head produce logits:
+
+\begin{align}
+    z = W_{\mathrm{emb}}\,\mathrm{Norm}(C(h_d)).
+\end{align}
+
+The same parameters of $R$ are used at every recurrence. Increasing $d$ therefore increases compute but not parameter count. The idea is related to depth-recurrent language models such as Huginn~\cite{geiping2025recurrent}, while the training and evaluation plan here is deliberately oriented toward small controlled experiments.
+
+\subsection{The Transformer block}
+
+Every block uses pre-normalization, grouped-query causal self-attention, rotary position embeddings, and a SwiGLU feed-forward network. In schematic form,
+
+\begin{align}
+    y &= x + \mathrm{Attention}(\mathrm{RMSNorm}(x)), \\
+    x' &= y + \mathrm{SwiGLU}(\mathrm{RMSNorm}(y)).
+\end{align}
+
+There is no custom attention rule. PyTorch's scaled dot-product attention can dispatch to fused CUDA implementations on supported hardware. This is intentional: the first experiments should test the recurrence hypothesis rather than a new kernel.
+
+The recurrent blocks use zero-initialized output projections on their residual branches. At initialization, the repeated block is therefore close to an identity transformation rather than an arbitrary destructive mapping. Recent controlled work on recurrent-depth Transformers reports that identity-friendly initialization can improve optimization of repeated computation~\cite{kohli2026loop}.
+
+\subsection{Why inject the original context every time?}
+
+A recurrent hidden state has two jobs if it is left alone: preserve the input and transform it. These goals can conflict over many iterations. ArcNeuron keeps the prelude representation available at every recurrence so the state can change without being solely responsible for lossless storage of the original prompt. Geiping et al. found repeated input injection useful in their depth-recurrent scaling experiments~\cite{geiping2025recurrent}. ArcNeuron adopts the same broad principle with a simple concatenation-and-projection mixer.
+
+\subsection{What recurrence is not}
+
+Recurrence is not automatically reasoning. Probing work on depth-recurrent models found limited evidence that repeated hidden states form an interpretable latent chain of thought, and extra recurrence can produce only small gains on some tasks~\cite{lu2025latent}. More recent controlled experiments also report an ``overthinking'' regime in which excessive recurrent depth hurts predictions~\cite{kohli2026loop}. ArcNeuron therefore treats depth as a hypothesis to test, not as a feature to advertise before measurement.
+
+The key experiment is simple: hold weights fixed and evaluate the same examples at depths 1, 2, 4, and 8. If tasks requiring deeper composition improve up to a useful operating point, recurrence has earned its complexity. If they do not, the recurrent core should be removed.
+
+\section{Training from natural text}
+
+Base training uses one objective:
+
+\begin{align}
+    \mathcal{L}_{\mathrm{LM}} = -\sum_t \log p_\theta(x_{t+1}\mid x_{\le t}).
+\end{align}
+
+The corpus is plain text. There are no required \texttt{Q:}, \texttt{A:}, \texttt{Reasoning:}, or hidden label fields. This choice avoids teaching a small model that reasoning is a formatting convention. Explanations, counterexamples, uncertainty, correction, mathematics, code, and causal arguments appear as ordinary language.
+
+Natural text alone does not remove the need for data design. A corpus containing only short factual statements mostly rewards short-range continuation. ArcNeuron's intended corpus contains prose in which conclusions depend on earlier statements: explanations that separate correlation from implication, examples where insufficient information is the correct conclusion, arguments that revise an initial guess, and descriptions of a new concept followed by consequences that were not stated verbatim.
+
+The distinction is between adding information and adding practice. Five sentences may contain only five facts about a new object, while many later passages can exercise different consequences of those facts without introducing new facts. This is similar in spirit to meta-learning work showing that neural networks can become much better at learning new meanings when the training distribution repeatedly requires few-shot learning and recombination rather than stable memorization~\cite{lake2023mlc,wang2025minnow}.
+
+\subsection{Context-dependent concepts}
+
+A useful training stressor is to reuse an invented surface form with unrelated meanings in different contexts. In one passage, \emph{velan} might be an animal; elsewhere it might be a material or a data structure. The model cannot safely encode one permanent meaning for the token. It must use surrounding text to infer which representation is useful now.
+
+This does not mean ordinary words should be randomly relabeled in the real corpus. The purpose is to include enough controlled text to reward contextual concept induction. Minnow demonstrates that repeated meta-training on new-word learning can substantially improve few-shot word learning~\cite{wang2025minnow}; MLC shows that systematic compositional behavior can be induced in standard neural architectures through the task distribution rather than symbolic machinery~\cite{lake2023mlc}.
+
+\section{Variable recurrent depth}
+
+During base training, a complete microbatch uses one recurrent depth sampled from a small range such as $\{1,2,3,4\}$. Using one depth for the whole microbatch keeps accelerator work aligned. More importantly, varying depth prevents the model from depending on one fixed number of transformations before prediction.
+
+The first experiments do not need a learned halting network. A fixed user-selected depth is easier to understand and easier to benchmark. The model can later gain a stopping mechanism only if experiments show a clear benefit. This follows a general project rule: a mechanism is added after a measured failure, not before one is observed.
+
+\section{Tuning: continued training, not a second model}
+
+ArcNeuron uses the word \emph{tuning} for a small, explicit ``hand-guided'' continuation stage. The base checkpoint is loaded, all of its parameters remain trainable, and next-token prediction continues at a lower learning rate on a smaller corpus. No adapter is attached and no alternate objective is introduced.
+
+The tuning corpus demonstrates response behavior that is difficult to guarantee from broad pretraining alone: answer the central question early, explain enough reasoning to make a conclusion checkable, avoid inventing unsupported details, distinguish a property of an individual from a class definition, and revise a mistaken intermediate calculation when the contradiction is visible. A small amount of base-text replay can be mixed in to reduce catastrophic forgetting.
+
+This stage should not carry the world's knowledge. If a fact is present only in tuning data, the separation between ``learning'' and ``being shown how to respond'' has failed. The intended role of tuning is behavioral shaping of an already useful base model.
+
+\section{Reasoning, explanations, and hidden computation}
+
+ArcNeuron does not require a visible chain of thought marker. A response may be short when the task is simple and longer when the user needs justification. The recurrent core supplies extra hidden computation per predicted token, while autoregressive generation supplies sequential computation across generated tokens. These are two different axes of compute.
+
+Explicit reasoning remains useful as training text when it is natural and concise. Work such as Quiet-STaR shows that learning useful rationales can improve prediction and downstream reasoning even when the training signal begins from ordinary text~\cite{zelikman2024quietstar}. At the same time, latent-only reasoning should not be assumed to replace explicit intermediate reasoning at scale. LOTUS reports that looped Transformers can close this gap when latent positions receive direct supervision from reasoning steps~\cite{fan2026lotus}. That approach is deliberately left for a later ArcNeuron revision because it requires a more specialized training pipeline than the first experiment needs.
+
+Self-verification is treated similarly. Evidence from S$^2$R suggests that teaching models to inspect and correct their own reasoning can produce substantial gains~\cite{ma2025s2r}. ArcNeuron R1 does not add a verifier network. Instead, the tuning corpus contains ordinary prose in which a proposed conclusion is checked against evidence and corrected when necessary. More elaborate reinforcement learning belongs after the basic language-model path has been measured.
+
+\section{Tokenizer and independence from Python logic}
+
+The reference implementation uses SentencePiece BPE with byte fallback. BPE is a compression boundary, not a semantic database. The tokenizer learns recurring byte sequences and stores no hand-authored mapping such as ``mammal means animal.'' Byte fallback keeps arbitrary UTF-8 text representable even when a character was absent from the tokenizer corpus.
+
+The serialized tokenizer model is stored inside the neural checkpoint. A checkpoint therefore contains the architecture configuration, ArcNeuron weights, and the exact text-to-ID codec. Moving the checkpoint to another correct implementation does not require \texttt{train.py}, \texttt{tune.py}, or any Python-side reasoning rule. Those scripts are optimization and sampling machinery only.
+
+\section{Reference configuration}
+
+The initial Colab-scale configuration is intentionally small:
+
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+Component & Value \\
+\midrule
+Tokenizer target vocabulary & 8192 \\
+Context length & 1024 \\
+Model width & 512 \\
+Query heads & 8 \\
+Key/value heads & 2 \\
+SwiGLU width & 1408 \\
+Prelude blocks & 1 \\
+Core blocks & 2 shared \\
+Coda blocks & 1 \\
+Training recurrence & 1--4 \\
+Evaluation recurrence & 1, 2, 4, 8 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Depending on the tokenizer's actual vocabulary size, this configuration is roughly in the mid-teens of millions of unique parameters. At recurrence depth four, the computation traverses one prelude block, two shared core blocks four times, and one coda block. Effective depth increases while unique core parameters remain unchanged.
+
+\section{Experiments that can disprove the design}
+
+The project needs controlled baselines before scale. At minimum, the same tokenizer, data, optimizer budget, and approximate parameter count should be used for a standard Transformer and ArcNeuron. The test set should include:
+
+\begin{itemize}[leftmargin=1.6em]
+    \item paraphrases that change wording without changing meaning;
+    \item novel concepts defined by only a few observations;
+    \item compositions whose answer is not written verbatim in the context;
+    \item counterfactual changes to one property while other properties remain valid;
+    \item contradictions and unsupported conclusions;
+    \item requests where insufficient information is the correct response;
+    \item natural explanations rather than only binary labels;
+    \item mathematics and code problems with independently checkable answers;
+    \item depth sweeps with the same weights at recurrence 1, 2, 4, and 8.
+\end{itemize}
+
+A successful result is not merely lower language-model loss. The recurrent model should improve specifically on tasks that need composition, and the improvement should correlate with additional recurrent compute up to a measured optimum. If a plain Transformer matches it at the same compute and parameter budget, the recurrence has not justified itself.
+
+\section{Implementation discipline}
+
+The reference repository intentionally keeps the model in one file. \texttt{arcneuron.py} contains only the neural architecture. It does not know how files are read, how loss is calculated, how a checkpoint is saved, how tokens are sampled, or what a question means. \texttt{train.py} performs base next-token training; \texttt{tune.py} continues the same training at lower learning rate; \texttt{generate.py} performs generic autoregressive sampling; \texttt{tokenizer.py} owns the reversible text codec.
+
+This separation is not cosmetic. It is an audit rule. If removing a Python helper changes what the trained neurons know about cats, arithmetic, or program structure, then knowledge leaked outside the model. Runtime code is allowed to decide how many recurrent passes to execute and how to sample logits. It is not allowed to decide which answer is correct.
+
+\section{Limitations and next steps}
+
+ArcNeuron is a research proposal and reference implementation, not a claim of state-of-the-art reasoning. Several failure modes are plausible. Recurrent states may converge too quickly and gain little from extra depth. The core may overthink at high recurrence. Small language-model training may not create useful concept induction without a much better corpus. Tuning may improve answer style while damaging general language modeling. BPE may hide some low-level generalization effects that a byte model would expose, while a byte model would spend substantially more compute per piece of text.
+
+The first milestone is therefore deliberately narrow: show that a small ArcNeuron checkpoint learns coherent language, can use a newly described concept in unseen prose, and gains measurable compositional accuracy when recurrence is increased within its useful range. Only after that should the project consider self-generated practice, reinforcement learning with verifiable rewards, learned stopping, latent-step supervision, longer context, or larger parameter counts.
+
+\section{Conclusion}
+
+ArcNeuron tries to make one architectural bet and keep everything around it ordinary. The bet is that reused neural depth can become a useful test-time reasoning resource when the training distribution rewards contextual learning, composition, explanation, and correction. The rest is standard language modeling: natural text, next-token cross entropy, a decoder-only Transformer, and autoregressive generation. This makes the idea cheap to reject if it fails and straightforward to scale if it works.
+
+\begin{thebibliography}{9}
+
+\bibitem{geiping2025recurrent}
+J. Geiping, S. McLeish, N. Jain, et al.
+\newblock \emph{Scaling up Test-Time Compute with Latent Reasoning: A Recurrent Depth Approach}.
+\newblock arXiv:2502.05171, 2025.
+\newblock \url{https://arxiv.org/abs/2502.05171}
+
+\bibitem{lu2025latent}
+W. Lu, Y. Yang, K. Lee, Y. Li, and E. Liu.
+\newblock \emph{Latent Chain-of-Thought? Decoding the Depth-Recurrent Transformer}.
+\newblock arXiv:2507.02199, 2025.
+\newblock \url{https://arxiv.org/abs/2507.02199}
+
+\bibitem{kohli2026loop}
+H. Kohli, S. Parthasarathy, H. Sun, and Y. Yao.
+\newblock \emph{Loop, Think, \& Generalize: Implicit Reasoning in Recurrent-Depth Transformers}.
+\newblock arXiv:2604.07822, 2026.
+\newblock \url{https://arxiv.org/abs/2604.07822}
+
+\bibitem{fan2026lotus}
+Y. Fan, A. Svete, and K. Lee.
+\newblock \emph{Bridging the Gap Between Latent and Explicit Reasoning with Looped Transformers}.
+\newblock arXiv:2606.31779, 2026.
+\newblock \url{https://arxiv.org/abs/2606.31779}
+
+\bibitem{lake2023mlc}
+B. M. Lake and M. Baroni.
+\newblock \emph{Human-like systematic generalization through a meta-learning neural network}.
+\newblock Nature 623, 115--121, 2023.
+\newblock \url{https://www.nature.com/articles/s41586-023-06668-3}
+
+\bibitem{wang2025minnow}
+W. Wang, G. Jiang, T. Linzen, and B. M. Lake.
+\newblock \emph{Rapid Word Learning Through Meta In-Context Learning}.
+\newblock arXiv:2502.14791, 2025.
+\newblock \url{https://arxiv.org/abs/2502.14791}
+
+\bibitem{zelikman2024quietstar}
+E. Zelikman, G. Harik, Y. Shao, et al.
+\newblock \emph{Quiet-STaR: Language Models Can Teach Themselves to Think Before Speaking}.
+\newblock arXiv:2403.09629, 2024.
+\newblock \url{https://arxiv.org/abs/2403.09629}
+
+\bibitem{ma2025s2r}
+R. Ma, P. Wang, C. Liu, et al.
+\newblock \emph{S$^2$R: Teaching LLMs to Self-verify and Self-correct via Reinforcement Learning}.
+\newblock arXiv:2502.12853, 2025.
+\newblock \url{https://arxiv.org/abs/2502.12853}
+
+\end{thebibliography}
+
+\end{document}
