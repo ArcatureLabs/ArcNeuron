@@ -1,4 +1,8 @@
 # ArcNeuron
+- Open In Colab(Vietnamese):
+[![Open In Colab(Vietnamese)](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ArcatureLabs/ArcNeuron/blob/main/ArcNeuron.ipynb)
+- Open In Colab(English):
+[![Open In Colab(English)](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ArcatureLabs/ArcNeuron/blob/main/ArcNeuron-English.ipynb)
 
 ArcNeuron is a small recurrent-depth language model experiment from ArcatureLabs.
 
