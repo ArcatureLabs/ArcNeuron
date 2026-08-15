@@ -1,41 +1,78 @@
-Khi một người hỏi mèo là gì, một câu trả lời tốt không cần kể mọi chi tiết từng biết về mèo. Có thể trả lời rằng mèo là một loài động vật có vú thường sống gần con người, có lông và bốn chân ở phần lớn cá thể. Nếu cần nói thêm, có thể nhắc rằng chúng thường săn các động vật nhỏ. Câu trả lời nên đi thẳng vào khái niệm trước rồi mới thêm đặc điểm có ích.
+Mèo là gì? Mèo là một loài động vật có vú đã sống gần con người từ rất lâu. Phần lớn mèo có bốn chân, có lông và săn những động vật nhỏ. Những đặc điểm như màu lông hoặc chiều dài đuôi có thể khác nhau giữa các cá thể.
 
-Nếu một người hỏi vì sao một con mèo mất một chân vẫn là động vật có vú, cần phân biệt tình trạng cơ thể với phân loại sinh học. Mất chân là một thay đổi của cá thể. Nó không cung cấp lý do để thay đổi loài mà cá thể thuộc về. Vì vậy câu trả lời phù hợp là con mèo vẫn là động vật có vú; chấn thương làm thay đổi cơ thể chứ không làm thay đổi nhóm sinh học của nó.
+Một con mèo bị mất một chân có còn là động vật có vú không? Có. Việc mất một chân làm thay đổi cơ thể của cá thể đó nhưng không làm thay đổi loài hay nhóm sinh học mà nó thuộc về. Số chân không phải điều quyết định một con mèo có còn là động vật có vú hay không.
 
-Một người đưa ra mô tả rằng lunari sống ở vùng núi lạnh và có lớp lông dày giúp giữ nhiệt, rồi hỏi điều gì có thể xảy ra nếu một lunari mất gần hết lông. Câu trả lời nên nối đúng hai dữ kiện liên quan: môi trường lạnh và chức năng giữ nhiệt của lông. Lunari có thể khó giữ ấm hơn. Không nên tự thêm rằng nó chắc chắn chết, mắc viêm phổi hoặc mất khả năng sinh sản vì mô tả không cung cấp những thông tin đó.
+Vì sao một con mèo mất một chân vẫn là mèo? Vì chấn thương chỉ làm thay đổi một đặc điểm của cá thể. Nó không tự động thay đổi nguồn gốc, loài hay những đặc điểm phân loại cơ bản của con vật.
 
-Nếu được hỏi liệu lunari chắc chắn là động vật có vú chỉ vì nó có lông, câu trả lời tốt là chưa đủ thông tin. Lông có thể khiến giả thuyết ấy có vẻ hợp lý, nhưng dữ kiện không nói mọi sinh vật có lông đều là động vật có vú và cũng không đưa ra tiêu chí phân loại lunari. Một câu trả lời đáng tin cậy phải tách điều được chứng minh khỏi điều chỉ được gợi ý.
+Nếu một lunari sống ở vùng núi lạnh và lớp lông dày giúp nó giữ nhiệt, điều gì có thể xảy ra khi nó mất gần hết lông? Khả năng giữ nhiệt của lunari có thể giảm, nên nó sẽ khó giữ ấm hơn trong môi trường lạnh. Chưa đủ thông tin để kết luận nó chắc chắn mắc bệnh hay chết.
 
-Khi người dùng hỏi một phép tính đơn giản, câu trả lời không cần biến thành một bài luận. Với 137 món hàng, mỗi món giá 24.800 đồng, doanh thu trước giảm trừ là 137 nhân 24.800, bằng 3.397.600 đồng. Nếu giải thích, chỉ cần cho thấy phép nhân tương ứng với số lượng nhân giá mỗi món rồi đưa kết quả rõ ràng.
+Lunari có lông dày. Có thể kết luận chắc chắn lunari là động vật có vú không? Không. Có lông có thể gợi ý một khả năng, nhưng dữ kiện đã cho không cung cấp tiêu chí phân loại đủ để kết luận lunari là động vật có vú.
 
-Nếu được yêu cầu viết Python kiểm tra số nguyên tố, lời giải cần đúng trước rồi mới cần đẹp. Một cách đơn giản là loại mọi số nhỏ hơn hai, sau đó thử các ước từ hai trong khi bình phương của ước chưa vượt quá n. Nếu tìm thấy một ước thì số không nguyên tố; nếu không tìm thấy thì số nguyên tố. Một đoạn mã ngắn thực hiện đúng ý tưởng này tốt hơn một đoạn mã phức tạp chỉ để trông tối ưu.
+Một sinh vật bơi rất giỏi có chắc chắn sống dưới nước không? Không. Khả năng bơi không đồng nghĩa với việc môi trường sống bắt buộc phải là dưới nước. Cần thêm dữ kiện về nơi sinh vật đó thường sống hoặc cách cơ thể nó thích nghi với môi trường.
 
-Khi giải thích code, nên nói điều mà code thực sự làm. Nếu một vòng lặp giữ biến best và thay best khi gặp phần tử lớn hơn, ý nghĩa là nó duy trì phần tử lớn nhất đã thấy cho tới thời điểm hiện tại. Sau khi duyệt hết, best là lớn nhất của toàn bộ danh sách. Nếu danh sách có thể rỗng, cần nói rõ việc khởi tạo từ phần tử đầu tiên không còn hợp lệ.
+Một chiếc hộp nặng hai kilôgam có màu gì? Không đủ thông tin để xác định màu. Khối lượng của chiếc hộp không cho biết màu sắc của nó.
 
-Một người có thể hỏi vì sao tìm kiếm nhị phân không dùng trực tiếp trên mảng chưa sắp xếp. Câu trả lời mạnh cần nói rằng phép so sánh với phần tử giữa chỉ giúp loại bỏ một nửa khi thứ tự của mảng bảo đảm những phần tử nhỏ hơn và lớn hơn nằm về các phía tương ứng. Nếu mảng không sắp xếp, kết quả so sánh ở giữa không cho biết nửa còn lại có thể bỏ đi, nên logic của binary search mất cơ sở.
+Có 137 món hàng, mỗi món giá 24.800 đồng. Tổng giá trị là bao nhiêu? Ta nhân số lượng với giá mỗi món: 137 × 24.800 = 3.397.600 đồng.
 
-Khi một kết luận ban đầu có vẻ đúng, vẫn nên kiểm tra xem nó có dựa vào giả định ẩn hay không. Chẳng hạn, nếu biết một sinh vật bơi giỏi và lập tức kết luận nó sống dưới nước, cần dừng lại. Khả năng bơi không đồng nghĩa với môi trường sống bắt buộc. Sau khi nhận ra giả định này, câu trả lời nên sửa thành chưa đủ thông tin để xác định nơi sinh sống.
+Vì sao 137 món, mỗi món 24.800 đồng, lại dùng phép nhân? Vì cùng một giá trị 24.800 đồng được lặp lại 137 lần. Phép nhân biểu diễn trực tiếp tổng của 137 khoản bằng nhau đó.
 
-Một câu trả lời tốt có thể sửa chính nó mà không cần làm người đọc theo dõi một màn độc thoại dài. Nếu phép tính ban đầu là 24.800 nhân 137 và một bước nhẩm ghi nhầm bảy lần 24.800 thành 173.800, kiểm tra phép nhân nhỏ sẽ phát hiện lỗi. Bảy lần 24.800 là 173.600. Sửa phần đó rồi cộng lại cho kết quả 3.397.600. Phần trình bày cuối chỉ cần giữ phép tính đã sửa và lý do cần thiết.
+Số nguyên tố là gì? Số nguyên tố là số nguyên lớn hơn một chỉ có đúng hai ước dương là một và chính nó.
 
-Nếu một câu hỏi không thể trả lời từ dữ kiện hiện có, nên nói rõ giới hạn. Biết một chiếc hộp nặng hai kilôgam không cho biết màu của nó. Một câu như "không đủ thông tin để xác định màu" mạnh hơn việc đoán màu nâu hay trắng chỉ vì những màu ấy phổ biến. Sự tự tin của câu trả lời phải đi cùng mức độ hỗ trợ của dữ liệu.
+Vì sao một số chẵn lớn hơn hai không thể là số nguyên tố? Vì nó chia hết cho hai, nên ngoài một và chính nó còn có ít nhất ước hai. Do đó nó không còn đúng hai ước dương.
 
-Khi người dùng hỏi một khái niệm mới vừa được mô tả trong vài câu, câu trả lời nên dựa vào mô tả hiện tại thay vì cố nhớ một nghĩa cố định. Nếu velan trong đoạn hiện tại là vật liệu tổng hợp cứng và dẫn nhiệt kém, hỏi velan có thể dùng làm lớp cách nhiệt hay không cần xem đặc tính dẫn nhiệt kém. Có cơ sở để nói nó có thể phù hợp về mặt truyền nhiệt, nhưng vẫn chưa đủ để khẳng định toàn bộ tính an toàn hoặc độ bền của sản phẩm nếu các đặc tính ấy chưa được cung cấp.
+Viết Python kiểm tra một số có phải số nguyên tố.
+def is_prime(n):
+    if n < 2:
+        return False
 
-Nếu ở một đoạn khác velan là sinh vật có lông sống ở vùng lạnh, mọi suy luận phải chuyển theo ngữ cảnh mới. Lúc đó việc velan dẫn nhiệt kém không còn là dữ kiện được phép sử dụng. Câu trả lời nên lấy ý nghĩa từ phần văn bản đang nói tới đối tượng, không trộn các nghĩa chỉ vì tên giống nhau.
+    i = 2
+    while i * i <= n:
+        if n % i == 0:
+            return False
+        i += 1
 
-Một câu hỏi có thể yêu cầu so sánh hai ý thay vì chọn đúng sai. Nếu hỏi sự khác nhau giữa tốc độ và vận tốc, câu trả lời nên nói tốc độ chỉ mô tả độ nhanh còn vận tốc có cả độ lớn và hướng. Hai vật có thể có cùng tốc độ nhưng vận tốc khác nhau khi chuyển động theo hai hướng khác nhau. Ví dụ ngắn này làm sự khác biệt rõ hơn một định nghĩa dài.
+    return True
 
-Khi người dùng yêu cầu phản bác một nhận định, không nên phản bác bằng thái độ. Nếu ai đó nói mọi con vật có bốn chân đều là mèo, có thể chỉ ra rằng đặc điểm bốn chân không đủ để xác định loài; nhiều loài khác cũng có bốn chân. Từ việc mèo thường có bốn chân không thể đảo chiều thành mọi vật bốn chân đều là mèo.
+Vì sao khi kiểm tra số nguyên tố chỉ cần thử ước đến căn bậc hai của n? Nếu n có một ước lớn hơn căn bậc hai thì ước đi kèm trong phép nhân tạo ra n phải nhỏ hơn căn bậc hai. Vì vậy nếu không tìm thấy ước nào ở nửa nhỏ này thì cũng không thể có một cặp ước không tầm thường ở phía lớn.
 
-Nếu một bài toán có nhiều bước, lời giải nên giữ mối liên hệ giữa các bước. Khi tính tổng bằng vòng lặp, trạng thái tổng sau mỗi phần tử đại diện cho tổng của phần đã duyệt. Đây là bất biến giúp giải thích vì sao khi vòng lặp kết thúc, trạng thái đó bằng tổng toàn bộ danh sách. Nói ra bất biến khi cần có thể làm lời giải dễ kiểm tra hơn chỉ liệt kê các dòng code.
+Hàm trong Python có ích khi nào? Hàm hữu ích khi một phần xử lý có trách nhiệm rõ ràng hoặc cần được sử dụng lại. Nó giúp gom logic vào một nơi, giảm lặp mã và làm thay đổi sau này dễ kiểm soát hơn.
 
-Khi được hỏi một câu ngoài đúng câu chữ từng thấy, mục tiêu là giữ ý nghĩa chứ không bắt chước bề mặt. Câu "mèo thường có bốn chân" và câu hỏi "phần lớn mèo có bao nhiêu chi để đi lại" dùng từ khác nhau nhưng cùng nhắm tới một đặc điểm. Một mô hình tốt cần học quan hệ từ ngữ qua nhiều ngữ cảnh trong dữ liệu, không cần một bảng Python nói rằng chi bằng chân.
+Tại sao binary search không hoạt động đúng trên một mảng chưa sắp xếp? Vì so sánh với phần tử giữa chỉ cho phép loại bỏ một nửa dữ liệu khi thứ tự của mảng bảo đảm các giá trị nhỏ hơn và lớn hơn nằm về các phía tương ứng. Nếu mảng không sắp xếp, phép so sánh ở giữa không cho biết nửa nào có thể bỏ đi.
 
-Nếu một từ hoàn toàn chưa từng xuất hiện và ngữ cảnh cũng không giải thích nó, không thể suy ra nghĩa bằng phép thuật. Ngược lại, nếu từ mới xuất hiện trong vài câu đủ rõ, mô hình có thể hình thành cách sử dụng tạm thời từ những quan hệ trong ngữ cảnh. Điều quan trọng là không biến sự thiếu thông tin thành một câu trả lời tự tin.
+Một vòng lặp giữ biến best và cập nhật best khi gặp phần tử lớn hơn đang làm gì? Nó duy trì phần tử lớn nhất đã thấy trong phần dữ liệu đã duyệt. Khi vòng lặp kết thúc và toàn bộ danh sách đã được xem, best là phần tử lớn nhất của danh sách, miễn là cách khởi tạo xử lý đúng trường hợp danh sách rỗng.
 
-Một trợ lý mạnh không cần phô ra mọi bước nội bộ cho mọi câu hỏi. Với câu dễ, trả lời trực tiếp thường tốt hơn. Với câu cần giải thích, nên nêu những lý do đủ để người đọc kiểm tra kết luận. Với bài khó, có thể cần xem xét nhiều khả năng rồi chỉ trình bày phần reasoning sạch và liên quan trong câu trả lời cuối.
+Tại sao một chương trình chạy đúng vài ví dụ chưa đủ để chứng minh thuật toán đúng? Vì các ví dụ chỉ kiểm tra một phần rất nhỏ của miền đầu vào. Thuật toán phải đúng với mọi đầu vào hợp lệ, kể cả các trường hợp biên như dữ liệu rỗng, giá trị lặp lại hoặc kích thước rất lớn.
 
-Nếu người dùng hỏi tại sao một thuật toán đúng, câu trả lời tốt nên dựa vào một tính chất giữ được qua các bước. Nếu chỉ nói "vì code chạy như vậy" thì chưa giải thích. Nếu chứng minh rằng sau mỗi vòng lặp biến best luôn là phần tử lớn nhất trong phần dữ liệu đã xem, rồi nhận ra phần dữ liệu đã xem trở thành toàn bộ mảng khi vòng lặp kết thúc, ta có lý do rõ ràng cho tính đúng đắn.
+Tốc độ và vận tốc khác nhau như thế nào? Tốc độ chỉ mô tả độ nhanh, còn vận tốc có cả độ lớn và hướng. Hai vật có thể có cùng tốc độ nhưng vận tốc khác nhau nếu chúng chuyển động theo các hướng khác nhau.
 
-Khi trả lời về một chủ đề chưa đủ chắc chắn, cách nói nên phản ánh điều đó. "Có thể", "nhiều khả năng" và "chưa đủ thông tin" có vai trò khác với "chắc chắn". Sử dụng đúng mức độ khẳng định không phải né tránh; nó giúp câu trả lời trung thực với bằng chứng đang có.
+Vì sao một vật trượt trên bàn thường chậm dần rồi dừng? Trong thực tế có ma sát và lực cản làm một phần năng lượng cơ học chuyển thành nhiệt và các dạng năng lượng khác. Nếu bỏ qua những lực đó thì mô hình chuyển động sẽ khác.
+
+Nước đóng băng có còn là nước không? Có. Trạng thái vật chất thay đổi từ lỏng sang rắn nhưng điều đó không tự động làm thay đổi thành phần hóa học cơ bản của nước.
+
+Nếu mọi A đều là B và x là A thì có thể kết luận x là B không? Có, nếu hai tiền đề đó được chấp nhận. Tuy nhiên tính đúng của bước suy luận không tự bảo đảm rằng các tiền đề phản ánh đúng thế giới thực.
+
+Một người nói mọi con vật có bốn chân đều là mèo vì mèo thường có bốn chân. Lập luận đó sai ở đâu? Nó đảo chiều một quan hệ không được phép đảo. Từ việc phần lớn mèo có bốn chân không thể suy ra mọi sinh vật bốn chân đều là mèo, vì nhiều loài khác cũng có bốn chân.
+
+Velan trong đoạn hiện tại được mô tả là vật liệu tổng hợp cứng và dẫn nhiệt kém. Velan có thể hữu ích cho cách nhiệt không? Khả năng dẫn nhiệt kém là một đặc điểm phù hợp với mục đích hạn chế truyền nhiệt, nên velan có thể có tiềm năng làm vật liệu cách nhiệt. Tuy nhiên cần thêm dữ kiện về độ bền, an toàn và điều kiện sử dụng trước khi kết luận nó phù hợp cho một sản phẩm cụ thể.
+
+Ở một đoạn khác velan được mô tả là sinh vật có lông sống ở vùng lạnh. Có được dùng thông tin velan dẫn nhiệt kém từ đoạn trước không? Không. Nghĩa của velan phải lấy từ ngữ cảnh hiện tại. Hai đoạn dùng cùng một tên nhưng mô tả hai khái niệm khác nhau.
+
+Neral được mô tả là một dụng cụ đo chiều dài có các vạch chia đều. Có thể suy ra neral làm bằng kim loại không? Không. Chức năng đo chiều dài và việc có vạch chia không cung cấp thông tin về vật liệu chế tạo.
+
+Nếu một từ hoàn toàn chưa từng xuất hiện và ngữ cảnh không giải thích nó thì có thể biết chắc nghĩa của từ đó không? Không. Không có đủ thông tin để suy ra một nghĩa cụ thể. Khi ngữ cảnh cung cấp đủ quan hệ, nghĩa tạm thời mới có thể được hình thành từ những quan hệ đó.
+
+Một lời giải ban đầu có vẻ đúng nhưng dựa vào một giả định chưa được chứng minh thì nên làm gì? Cần tách giả định đó ra và kiểm tra xem dữ kiện có hỗ trợ nó không. Nếu không, phải sửa kết luận thay vì tiếp tục suy luận dựa trên giả định sai.
+
+Khi một phép tính dài cho ra kết quả đáng ngờ thì nên làm gì? Nên kiểm tra lại các bước trung gian hoặc tính lại bằng một cách độc lập. Nếu phát hiện lỗi, sửa lỗi trước rồi mới trình bày kết quả cuối thay vì bảo vệ phép tính ban đầu.
+
+Một câu hỏi dễ có cần giải thích thật dài không? Không. Câu trả lời nên đủ để đúng, rõ và có thể kiểm tra. Chỉ nên mở rộng reasoning khi câu hỏi thực sự cần giải thích hoặc khi kết luận có thể gây nhầm lẫn.
+
+Nếu dữ kiện không đủ để trả lời thì câu trả lời mạnh nên làm gì? Nói rõ phần nào có thể kết luận và phần nào chưa thể xác định. Đoán một giá trị phổ biến không biến thông tin thiếu thành kiến thức.
+
+Hãy giải thích vì sao mất lớp lông có thể gây bất lợi cho một sinh vật sống ở nơi lạnh. Lông có thể giữ một lớp không khí gần cơ thể và làm giảm tốc độ mất nhiệt. Khi mất phần lớn lớp lông, cơ chế giữ nhiệt yếu đi, nên sinh vật có thể khó duy trì nhiệt độ cơ thể hơn trong môi trường lạnh.
+
+Hãy so sánh thay đổi trạng thái và thay đổi danh tính bằng ví dụ nước đóng băng. Khi nước đóng băng, trạng thái vật chất thay đổi nhưng chất vẫn là nước. Ví dụ này cho thấy một thuộc tính quan sát được có thể thay đổi mà danh tính cơ bản của vật chưa nhất thiết thay đổi.
+
+Một con mèo bị thương không thể chạy nhanh như trước. Có thể từ đó kết luận nó không còn là mèo không? Không. Khả năng chạy là một đặc điểm có thể thay đổi do chấn thương; nó không phải bằng chứng rằng loài của cá thể đã thay đổi.
+
+Tại sao câu trả lời đúng nhưng không giải thích giới hạn của dữ kiện đôi khi vẫn kém? Vì người đọc không biết phần nào là kết luận được hỗ trợ và phần nào chỉ là suy đoán. Một câu trả lời đáng tin cậy phải giữ mức độ khẳng định phù hợp với bằng chứng.
