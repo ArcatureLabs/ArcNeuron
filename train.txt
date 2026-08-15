@@ -1,0 +1,85 @@
+Mèo là động vật có vú và đã sống gần con người từ rất lâu. Phần lớn mèo có bốn chân, một lớp lông bao phủ cơ thể và khả năng nghe tốt. Những đặc điểm như màu lông, chiều dài đuôi hoặc tình trạng của một chân có thể khác nhau giữa các cá thể. Một con mèo bị thương và mất một chân vẫn là mèo, bởi chấn thương làm thay đổi cơ thể của cá thể chứ không tự động thay đổi loài mà nó thuộc về.
+
+Lớp lông của nhiều động vật giúp hạn chế sự mất nhiệt. Khi môi trường lạnh, một lớp lông dày có thể giữ lại nhiều không khí gần da và làm tốc độ truyền nhiệt ra ngoài giảm xuống. Vì vậy, nếu một con vật vốn thích nghi với khí hậu lạnh mất gần hết lớp lông, nó có thể khó duy trì nhiệt độ cơ thể hơn. Từ thông tin này không thể kết luận chắc chắn nó sẽ chết hoặc mắc một bệnh cụ thể, vì kết quả còn phụ thuộc vào nhiệt độ, sức khỏe và nơi trú ẩn.
+
+Một kết luận tốt không chỉ cần một dữ kiện có vẻ liên quan. Nếu biết một sinh vật có thể bơi, ta chưa thể kết luận nó sống dưới nước. Nhiều loài sống chủ yếu trên cạn vẫn có thể bơi. Muốn xác định môi trường sống, cần thêm thông tin trực tiếp về nơi nó thường sinh sống hoặc cách cơ thể nó thích nghi với môi trường đó.
+
+Trong toán học, phép nhân có thể được hiểu như phép cộng lặp lại khi làm việc với các số nguyên không âm. Ba nhân bốn có thể được nhìn như ba cộng ba cộng ba cộng ba, nên kết quả là mười hai. Cách hiểu này giúp giải thích ý nghĩa của phép nhân, nhưng với số thực hoặc các cấu trúc toán học khác, ta thường dùng định nghĩa tổng quát hơn thay vì chỉ dựa vào cộng lặp lại.
+
+Một số nguyên tố là số nguyên lớn hơn một chỉ có hai ước dương là một và chính nó. Số hai là số nguyên tố nhỏ nhất và cũng là số nguyên tố chẵn duy nhất. Nếu một số chẵn lớn hơn hai thì nó chia hết cho hai, vì vậy nó có ít nhất ba ước dương khác nhau và không thể là số nguyên tố.
+
+Khi cần kiểm tra một số nguyên dương n có phải số nguyên tố hay không, không nhất thiết phải thử mọi số nhỏ hơn n. Nếu n có một ước lớn hơn căn bậc hai của n thì nó cũng phải có một ước tương ứng nhỏ hơn căn bậc hai của n. Vì thế chỉ cần thử các ước từ hai đến căn bậc hai của n là đủ để tìm ra một phân tích nếu nó tồn tại.
+
+Python là một ngôn ngữ lập trình bậc cao có cú pháp chú trọng khả năng đọc. Một hàm cho phép một phần xử lý được đặt tên và gọi lại nhiều lần. Khi cùng một logic xuất hiện ở nhiều nơi, đặt logic đó vào một hàm giúp giảm lặp mã và làm thay đổi sau này dễ kiểm soát hơn. Điều này không có nghĩa mọi đoạn mã đều cần thành một hàm; một hàm có ích nhất khi nó đại diện cho một trách nhiệm rõ ràng.
+
+Một vòng lặp duyệt qua danh sách có thể dùng để tính tổng bằng cách giữ một biến trạng thái. Ban đầu tổng bằng không. Mỗi lần đọc một phần tử, giá trị của phần tử được cộng vào tổng hiện tại. Sau khi đã duyệt hết danh sách, trạng thái cuối cùng chính là tổng của các phần tử. Ý tưởng này không phụ thuộc Python; nó là một mẫu tính toán có thể được viết trong nhiều ngôn ngữ.
+
+Tìm phần tử lớn nhất cũng là một bài toán giữ trạng thái. Ta có thể bắt đầu bằng phần tử đầu tiên làm giá trị tốt nhất hiện tại. Khi gặp một phần tử lớn hơn, ta thay giá trị tốt nhất bằng phần tử mới. Khi không còn phần tử nào để xem xét, giá trị đang giữ là phần tử lớn nhất. Nếu danh sách rỗng thì cách làm này cần một quy ước khác, vì không có phần tử đầu tiên để khởi tạo.
+
+Một thuật toán không chỉ cần cho ra đáp án đúng trên vài ví dụ. Nó cần đúng với mọi đầu vào thuộc miền đã xác định. Một cách kiểm tra là tìm các trường hợp biên: danh sách rỗng, chỉ một phần tử, số âm, giá trị lặp lại hoặc kích thước rất lớn. Một chương trình vượt qua ví dụ mẫu nhưng sai ở trường hợp biên chưa thể được xem là lời giải đúng.
+
+Trong vật lý, vận tốc mô tả tốc độ thay đổi vị trí theo thời gian và có hướng. Hai vật có cùng độ lớn tốc độ nhưng chuyển động theo hai hướng ngược nhau có vận tốc khác nhau. Vì vậy câu nói hai vật chạy nhanh như nhau chưa đủ để kết luận vận tốc của chúng bằng nhau.
+
+Ma sát có thể làm chuyển động cơ học chậm lại bằng cách chuyển một phần năng lượng cơ học sang nhiệt và những dạng năng lượng khác. Khi một vật trượt trên mặt bàn rồi dừng, điều đó không chứng minh rằng vật đang chuyển động tự nhiên phải tự mất vận tốc. Nếu bỏ qua ma sát và các lực cản, mô hình chuyển động sẽ khác.
+
+Nước có thể tồn tại ở nhiều trạng thái. Việc một cốc nước đóng băng khi nhiệt độ hạ thấp không làm chất đó ngừng là nước; trạng thái vật chất đã đổi nhưng thành phần hóa học cơ bản vẫn có thể giữ nguyên. Đây là một ví dụ cho thấy thay đổi thuộc tính quan sát được không nhất thiết đồng nghĩa với thay đổi danh tính của vật.
+
+Một lập luận có thể đúng về cấu trúc nhưng sai vì tiền đề sai. Nếu ta nói mọi con chim đều biết bơi và chim sẻ là chim, rồi kết luận chim sẻ biết bơi, bước suy diễn phù hợp với hai tiền đề nhưng tiền đề đầu tiên không đúng trong thực tế. Khi đánh giá một lời giải cần tách hai việc: các bước suy luận có theo tiền đề hay không, và tiền đề có được dữ liệu hỗ trợ hay không.
+
+Không đủ thông tin cũng là một kết quả hợp lệ. Nếu chỉ biết một chiếc hộp nặng hai kilôgam, ta không thể suy ra màu của nó. Việc cố chọn một màu phổ biến không biến suy đoán thành kiến thức. Một hệ thống đáng tin cậy cần phân biệt được điều có thể suy ra từ dữ kiện với điều chỉ có vẻ hợp lý.
+
+Velan là tên mà một nhóm nghiên cứu giả định đặt cho một sinh vật nhỏ sống trên sườn núi lạnh. Trong mô tả này, velan có lông dày, thường ăn lá non và di chuyển nhanh trên đá. Nếu lớp lông là cơ chế chính giúp velan giữ nhiệt, việc mất phần lớn lớp lông tạo ra một bất lợi rõ ràng trong môi trường lạnh. Tuy nhiên mô tả đó không cho biết velan là động vật có vú, nên không nên tự thêm phân loại ấy.
+
+Ở một tài liệu khác, velan không phải sinh vật. Velan là tên của một vật liệu tổng hợp có độ cứng cao và dẫn nhiệt kém. Nếu một tấm velan được dùng làm lớp cách nhiệt, khả năng dẫn nhiệt kém là đặc điểm liên quan trực tiếp đến công dụng đó. Ý nghĩa của từ velan ở đây phải được lấy từ ngữ cảnh hiện tại, không thể lấy định nghĩa về sinh vật ở đoạn văn khác rồi áp dụng máy móc.
+
+Trong một ví dụ lập trình, velan lại là tên của một cấu trúc dữ liệu thử nghiệm. Cấu trúc này lưu các phần tử theo thứ tự chèn và cho phép lấy phần tử cuối cùng trong thời gian hằng số. Cùng một chuỗi ký tự có thể mang những nghĩa hoàn toàn khác nhau. Người đọc xác định nghĩa phù hợp bằng những câu xung quanh, và một mô hình ngôn ngữ cũng cần học khả năng sử dụng ngữ cảnh theo cách tương tự.
+
+Lunari được mô tả như một sinh vật sống ở vùng núi lạnh. Nó có lớp lông dày giúp giữ nhiệt, ăn thực vật và có thể di chuyển trên địa hình dốc. Nếu một lunari mất gần hết lông, điều có thể suy ra trực tiếp là khả năng giữ nhiệt của nó giảm. Không có dữ kiện về hệ hô hấp, tuổi thọ hay bệnh lý, nên những kết luận về các vấn đề đó sẽ vượt quá thông tin đã cho.
+
+Nếu một lunari bị thương ở chân và không thể chạy nhanh như trước, dữ kiện này thay đổi khả năng di chuyển của cá thể đó. Nó không tự động xóa những đặc điểm khác đã biết như môi trường sống hoặc chế độ ăn. Khi một thuộc tính thay đổi, cần xác định thuộc tính đó có vai trò gì trong kết luận đang xét thay vì coi mọi thông tin về đối tượng là một khối không thể tách rời.
+
+Một người có thể hiểu từ mới từ vài câu nếu các câu cung cấp đủ quan hệ. Giả sử neral là một dụng cụ dùng để đo chiều dài và trên thân nó có các vạch chia đều. Từ hai thông tin này có thể đoán rằng việc đọc vị trí của một vật so với các vạch là một cách sử dụng neral. Ta chưa biết neral làm bằng vật liệu gì, nên không thể suy ra điều đó chỉ từ chức năng đo chiều dài.
+
+Ở một ngữ cảnh khác, neral là một loài cây nhỏ sống ở vùng đất ẩm và có rễ nông. Câu nói neral cần đất ẩm lúc này nói về cây, không liên quan dụng cụ đo ở đoạn trước. Khả năng gán ý nghĩa theo ngữ cảnh giúp ngôn ngữ xử lý tên riêng, từ đồng âm và những khái niệm mới mà không cần một ánh xạ cố định duy nhất cho mỗi chuỗi ký tự.
+
+Khi đọc một câu hỏi, không phải mọi từ trong đoạn dữ liệu đều quan trọng như nhau. Nếu câu hỏi hỏi về khả năng giữ nhiệt của một con vật, thông tin về lớp lông và nhiệt độ môi trường có liên quan hơn thông tin về màu mắt. Suy luận tốt thường bắt đầu bằng việc xác định những dữ kiện có quan hệ với kết luận cần tìm, sau đó kiểm tra xem chúng có đủ mạnh để hỗ trợ kết luận hay chưa.
+
+Một câu trả lời dài không nhất thiết là một câu trả lời tốt. Nếu câu hỏi chỉ cần giải thích một nguyên nhân, việc thêm nhiều chi tiết không liên quan có thể làm ý chính khó nhìn thấy hơn. Ngược lại, câu trả lời quá ngắn đôi khi chỉ đưa ra kết luận mà không cho biết vì sao. Câu trả lời mạnh thường đủ chi tiết để người đọc kiểm tra được lập luận nhưng không kéo dài chỉ để tạo cảm giác phức tạp.
+
+Tự kiểm tra là một phần quan trọng của giải quyết vấn đề. Sau khi có một kết luận ban đầu, ta có thể hỏi kết luận đó có mâu thuẫn với dữ kiện nào không, có dựa vào một giả định chưa được cung cấp không, và có trường hợp biên nào làm nó sai không. Nếu phát hiện vấn đề, sửa lời giải trước khi trình bày thường hiệu quả hơn việc bảo vệ kết luận đầu tiên bằng mọi giá.
+
+Giả sử một cửa hàng bán 137 món hàng với cùng giá 24.800 đồng mỗi món. Doanh thu trước các khoản giảm trừ được tính bằng số món nhân giá mỗi món. Ta có thể tách 137 thành 100, 30 và 7. Một trăm lần 24.800 là 2.480.000, ba mươi lần là 744.000 và bảy lần là 173.600. Cộng ba phần cho kết quả 3.397.600 đồng. Việc tách phép nhân thành những phần dễ kiểm tra giúp giảm khả năng sai số khi tính nhẩm.
+
+Nếu một phép tính phức tạp, một lời giải nên giữ các đại lượng cùng đơn vị trước khi kết hợp. Không thể cộng trực tiếp ba mét với hai giây vì hai con số mô tả hai loại đại lượng khác nhau. Kiểm tra đơn vị thường phát hiện được những công thức sai trước khi ta cần tính đến con số cụ thể.
+
+Trong lập trình, độ phức tạp thời gian mô tả cách lượng công việc tăng khi kích thước đầu vào tăng. Hai chương trình đều chạy nhanh với mười phần tử nhưng có thể khác nhau rất nhiều với mười triệu phần tử. Vì vậy đo một lần trên đầu vào nhỏ không đủ để kết luận thuật toán nào có khả năng mở rộng tốt hơn.
+
+Tìm kiếm nhị phân chỉ dùng được khi ta có một trật tự phù hợp để loại bỏ một nửa không gian tìm kiếm sau mỗi bước. Trên một mảng đã sắp xếp, so sánh với phần tử giữa cho biết cần tiếp tục ở nửa trái hay nửa phải. Trên một mảng không sắp xếp, cùng phép so sánh không cung cấp thông tin đó, nên áp dụng tìm kiếm nhị phân máy móc sẽ cho kết quả sai.
+
+Một mô hình học máy nhận tín hiệu từ dữ liệu và hàm mục tiêu. Nếu dữ liệu lặp lại cùng một câu hàng nghìn lần, mô hình có thể trở nên rất giỏi dự đoán câu ấy mà không nhất thiết học được quy luật tổng quát. Nếu dữ liệu thay đổi bề mặt nhưng giữ cùng cấu trúc cần suy ra, cách dễ nhất để giảm lỗi có thể chuyển từ ghi nhớ sang học một phép biến đổi có thể tái sử dụng.
+
+Việc một mạng neuron có nhiều tham số không đảm bảo nó suy luận tốt. Tham số tạo ra dung lượng biểu diễn, còn hành vi xuất hiện phụ thuộc vào cách mạng được tối ưu và những bài toán mà dữ liệu buộc nó phải giải. Một kiến trúc nhỏ được huấn luyện trên phân phối phù hợp có thể là thí nghiệm rõ ràng hơn một mô hình rất lớn khi mục tiêu là kiểm tra một giả thuyết về suy luận.
+
+Trong một mạng hồi quy theo chiều sâu, cùng một khối neuron có thể được áp dụng nhiều lần lên trạng thái ẩn. Điều này tăng lượng tính toán mà không tạo một bộ tham số mới cho từng bước. Tuy nhiên nhiều vòng hơn không mặc nhiên tốt hơn. Nếu trạng thái đã chứa đủ thông tin cho dự đoán, tiếp tục biến đổi có thể làm nó lệch khỏi biểu diễn hữu ích. Vì vậy tác dụng của số vòng cần được đo thay vì giả định.
+
+Một cách công bằng để kiểm tra chiều sâu hồi quy là giữ nguyên trọng số và thay đổi số lần chạy khối lõi khi đánh giá. Nếu các bài cần kết hợp nhiều quan hệ được cải thiện khi tăng số vòng tới một mức hợp lý, ta có bằng chứng rằng phần tính toán lặp đang được dùng hữu ích. Nếu kết quả gần như không đổi, kiến trúc chưa chứng minh được lợi ích của recurrence.
+
+Ngôn ngữ tự nhiên chứa rất nhiều suy luận không được viết dưới dạng ký hiệu logic. Khi một đoạn văn nói rằng trời lạnh, một người mặc áo dày hơn và sau đó cảm thấy ấm hơn, người đọc có thể hình thành quan hệ về giữ nhiệt mà không cần nhìn thấy chuỗi mũi tên hay nhãn true và false. Mô hình ngôn ngữ nên học từ những quan hệ trong văn bản thay vì phụ thuộc vào một bộ luật Python được viết bên ngoài mạng.
+
+Một mô hình có thể sinh câu trả lời tự nhiên bằng cách dự đoán từng token tiếp theo. Cơ chế autoregressive không giới hạn câu trả lời ở có hoặc không. Nếu trạng thái ẩn giữ đủ thông tin về nguyên nhân, điều kiện và mức độ chắc chắn, bộ giải mã có thể tạo một đoạn giải thích mới chưa từng xuất hiện nguyên văn trong dữ liệu.
+
+Khi thông tin mới mâu thuẫn với thông tin cũ, cần xem nguồn và ngữ cảnh. Nếu một đoạn nói rằng rila sống ở nơi lạnh nhưng đoạn khác nói một cá thể rila đang ở sa mạc, hai câu chưa chắc mâu thuẫn. Câu đầu có thể mô tả môi trường điển hình của loài, còn câu sau mô tả vị trí hiện tại của một cá thể. Phân biệt mức khái quát và trường hợp cụ thể giúp tránh kết luận quá nhanh.
+
+Nếu mọi phần tử của một tập A đều thuộc tập B và một đối tượng x thuộc A, ta có thể kết luận x thuộc B. Nhưng chiều ngược lại không tự động đúng. Biết x thuộc B không đủ để kết luận x thuộc A, vì B có thể chứa nhiều loại đối tượng khác. Đây là một lỗi suy luận phổ biến: đảo ngược một quan hệ kéo theo mà không có dữ kiện hỗ trợ.
+
+Nếu một chương trình trả về kết quả đúng nhưng lý do giải thích sử dụng một giả định sai, ta vẫn nên sửa lời giải. Đáp án tình cờ đúng không chứng minh quá trình suy luận đúng. Trong những bài có thể kiểm chứng, việc so sánh kết quả cuối với một phép tính độc lập là hữu ích, nhưng kiểm tra các bước vẫn giúp model học cách tránh những lỗi có thể cho đáp án sai ở trường hợp khác.
+
+Một mô hình được dùng như trợ lý cần biết trả lời theo mức độ chắc chắn của kiến thức. Khi dữ kiện trực tiếp hỗ trợ kết luận, câu trả lời có thể rõ ràng. Khi chỉ có bằng chứng gián tiếp, nên nói đó là khả năng hoặc suy đoán. Khi không có thông tin, câu trả lời tốt hơn là thừa nhận giới hạn thay vì tạo một con số cụ thể nghe có vẻ hợp lý.
+
+Việc học một từ mới không đòi hỏi từ đó phải xuất hiện trong mọi câu có thể tưởng tượng. Nếu người đọc biết zarin là một dụng cụ cắt giấy, có lưỡi sắc và có tay cầm, họ có thể hiểu một câu mới nói rằng cần cầm zarin ở phần tay cầm để tránh chạm vào lưỡi. Câu mới không có trong định nghĩa ban đầu; nó kết hợp chức năng và cấu tạo để tạo ra một suy luận phù hợp.
+
+Trong một ngữ cảnh khác, zarin là tên một phương pháp nén dữ liệu không mất mát. Lúc này nói zarin có tay cầm là vô nghĩa nếu không có thông tin mới chứng minh điều đó. Một mô hình cần ưu tiên nghĩa được thiết lập trong ngữ cảnh hiện tại thay vì mang theo mọi thuộc tính từng gắn với cùng chuỗi token ở nơi khác.
+
+Khi giải một bài toán, có thể tồn tại nhiều con đường suy luận đúng. Hai lời giải không cần dùng cùng câu chữ nếu chúng giữ được những quan hệ cần thiết và đi đến kết luận phù hợp. Vì vậy huấn luyện một mô hình ngôn ngữ không nên biến một chuỗi giải thích duy nhất thành luật cứng; mục tiêu là làm phân phối dự đoán ưu tiên những cách tiếp tục nhất quán với kiến thức và lập luận.
+
+Một mô hình tốt cũng cần khả năng viết. Cùng một ý có thể được diễn đạt ngắn cho câu hỏi đơn giản hoặc giải thích kỹ hơn khi người đọc cần lý do. Khả năng chọn cấu trúc câu, liên kết các ý và tránh lặp vô ích là một phần của chất lượng câu trả lời, không tách rời hoàn toàn khỏi khả năng hiểu nội dung.
