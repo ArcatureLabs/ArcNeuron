@@ -348,13 +348,13 @@ The hypothesis only becomes interesting after a real corpus and controlled basel
 
 ## Paper
 
-The architecture and research plan are described in `ArcNeuron.tex`.
+The architecture and research plan are described in `paper/ArcNeuron.tex`.
 
 Compile it with:
 
 ```bash
-xelatex ArcNeuron.tex
-xelatex ArcNeuron.tex
+xelatex paper/ArcNeuron.tex
+xelatex paper/ArcNeuron.tex
 ```
 
 The paper deliberately makes no benchmark claim that has not been measured yet.
