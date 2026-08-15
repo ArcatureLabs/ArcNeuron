@@ -1,166 +1,490 @@
-"""Continue training an ArcNeuron checkpoint on a small hand-guided text corpus.
+"""Continue training ArcNeuron on a small hand-guided natural-text corpus.
 
-"Tuning" here is intentionally literal continued language-model training.  It is
-not a separate classifier, LoRA adapter, reward model, symbolic reasoner, or
-special instruction objective.  The same ArcNeuron weights keep learning with
-the same next-token cross-entropy loss, only with a lower learning rate and a
-small amount of replay from train.txt to reduce forgetting.
+"Tuning" is continued next-token training on the exact same neural weights.
+There is no adapter, reward model, classifier, symbolic reasoner, or alternate
+objective. A small amount of base-text replay can be mixed in to reduce
+forgetting.
+
+The script prints live loss, learning rate, gradient norm, throughput, replay
+usage, VRAM use, and ETA. Output is flushed immediately for Google Colab.
 """
 
-import argparse  # Tuning budget and file paths should be easy to change from one Colab command.
-import random  # Random corpus selection and recurrent depth keep tuning examples from becoming a fixed execution script.
-import time  # Timing reveals whether a chosen context/depth combination is practical on the current GPU.
-from contextlib import nullcontext  # CPU execution uses the same loop without mixed-precision context management.
-from dataclasses import asdict  # Save the unchanged neural architecture back into the tuned checkpoint.
-from pathlib import Path  # Explicit paths make checkpoint and corpus handling easy to audit.
+import argparse
+import math
+import random
+import time
+from contextlib import nullcontext
+from dataclasses import asdict
+from pathlib import Path
 
-import torch  # Tuning updates the same real neural parameters created during base training.
-from torch import Tensor  # Tensor annotations document the plain token-stream batches.
-from torch.nn import functional as F  # Cross entropy remains the one and only learning objective.
+import torch
+from torch import Tensor
+from torch.nn import functional as F
 
-from arcneuron import ArcNeuron, ArcNeuronConfig  # The tuned model is exactly the same architecture as the base model.
-from tokenizer import ArcTokenizer  # The base tokenizer is restored rather than retrained on tuning text.
+from arcneuron import ArcNeuron, ArcNeuronConfig
+from tokenizer import ArcTokenizer
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Continue ArcNeuron training on tune.txt")  # Keep the tuning entry point discoverable without reading source first.
-    parser.add_argument("--checkpoint", default="arcneuron.pt")  # Tuning always starts from an already trained ArcNeuron checkpoint.
-    parser.add_argument("--data", default="tune.txt")  # Human-guided natural text lives in a plain text file.
-    parser.add_argument("--replay-data", default="train.txt")  # A little base text replay helps preserve general language behavior.
-    parser.add_argument("--out", default="arcneuron-tuned.pt")  # Never overwrite the base model unless the user deliberately asks for that path.
-    parser.add_argument("--steps", type=int, default=1000)  # Tuning should be much shorter than base pretraining by default.
-    parser.add_argument("--batch-size", type=int, default=8)  # A modest microbatch leaves room for longer reasoning-like prose examples.
-    parser.add_argument("--grad-accum", type=int, default=1)  # Effective batch size can grow without changing the model or corpus format.
-    parser.add_argument("--context", type=int, default=512)  # Tuning may use shorter chunks than the model's maximum trained context.
-    parser.add_argument("--max-depth", type=int, default=4)  # Continue exercising multiple recurrent depths instead of collapsing to one fixed depth.
-    parser.add_argument("--lr", type=float, default=5e-5)  # A lower rate nudges behavior without aggressively overwriting base representations.
-    parser.add_argument("--weight-decay", type=float, default=0.05)  # Keep light regularization while adapting the existing model.
-    parser.add_argument("--clip", type=float, default=1.0)  # Recurrent gradients receive the same safety bound as base training.
-    parser.add_argument("--replay-ratio", type=float, default=0.15)  # Roughly fifteen percent of batches can come from base text to resist forgetting.
-    parser.add_argument("--save-every", type=int, default=100)  # Colab users should not lose a long tuning run when the runtime disconnects.
-    parser.add_argument("--seed", type=int, default=2026)  # A separate fixed seed makes tuning runs comparable while remaining independent of pretraining RNG.
-    return parser.parse_args()  # One namespace holds every runtime choice without hiding policy in global constants.
+    """Read tuning settings."""
+
+    parser = argparse.ArgumentParser(
+        description="Continue ArcNeuron training on tune.txt"
+    )
+
+    parser.add_argument("--checkpoint", default="arcneuron.pt")
+    parser.add_argument("--data", default="tune.txt")
+    parser.add_argument("--replay-data", default="train.txt")
+    parser.add_argument("--out", default="arcneuron-tuned.pt")
+
+    parser.add_argument("--steps", type=int, default=1000)
+    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--grad-accum", type=int, default=1)
+    parser.add_argument("--context", type=int, default=512)
+    parser.add_argument("--max-depth", type=int, default=4)
+
+    parser.add_argument("--lr", type=float, default=5e-5)
+    parser.add_argument("--min-lr", type=float, default=5e-6)
+    parser.add_argument("--warmup", type=int, default=50)
+    parser.add_argument("--weight-decay", type=float, default=0.05)
+    parser.add_argument("--clip", type=float, default=1.0)
+    parser.add_argument("--replay-ratio", type=float, default=0.20)
+
+    parser.add_argument("--log-every", type=int, default=10)
+    parser.add_argument("--save-every", type=int, default=100)
+    parser.add_argument("--seed", type=int, default=2026)
+
+    return parser.parse_args()
 
 
 def choose_device() -> torch.device:
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Use the GPU automatically when Colab exposes one.
+    """Prefer CUDA automatically."""
+
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def read_text(path: str | Path) -> str:
-    text = Path(path).read_text(encoding="utf-8")  # Tuning examples remain ordinary UTF-8 prose exactly as written by a human.
-    if not text.strip():  # An empty tuning file should fail before optimizer state is touched.
+    """Read a plain UTF-8 text corpus."""
+
+    text = Path(path).read_text(encoding="utf-8")
+
+    if not text.strip():
         raise ValueError(f"text corpus is empty: {path}")
-    return text  # No labels, templates, or reasoning annotations are created in Python.
+
+    return text
 
 
-def to_tokens(tokenizer: ArcTokenizer, text: str) -> Tensor:
-    ids = tokenizer.encode(text, add_bos=True, add_eos=True)  # Reuse the base model's immutable token-ID geometry.
-    return torch.tensor(ids, dtype=torch.long)  # Keep the whole corpus on CPU and move only sampled chunks to the accelerator.
+def to_tokens(
+    tokenizer: ArcTokenizer,
+    text: str,
+) -> Tensor:
+    """Encode text with the tokenizer already stored in the base checkpoint."""
+
+    ids = tokenizer.encode(
+        text,
+        add_bos=True,
+        add_eos=True,
+    )
+
+    return torch.tensor(ids, dtype=torch.long)
 
 
-def sample_batch(tokens: Tensor, batch_size: int, context: int, device: torch.device) -> tuple[Tensor, Tensor]:
-    if tokens.numel() < context + 2:  # The chosen tuning context must fit at least one shifted training example.
-        raise ValueError("tuning text is too small for --context; lower the context or add more natural text")
-    highest_start = tokens.numel() - context - 1  # Targets consume one token beyond each input chunk.
-    starts = torch.randint(0, highest_start, (batch_size,))  # Random contiguous chunks avoid hand-engineered example boundaries.
-    x = torch.stack([tokens[start : start + context] for start in starts])  # Input remains plain language-model context.
-    y = torch.stack([tokens[start + 1 : start + context + 1] for start in starts])  # Target remains plain next-token continuation.
-    return x.to(device, non_blocking=True), y.to(device, non_blocking=True)  # Only the current batch uses GPU memory.
+def sample_batch(
+    tokens: Tensor,
+    batch_size: int,
+    context: int,
+    device: torch.device,
+) -> tuple[Tensor, Tensor]:
+    """Sample contiguous next-token windows."""
+
+    if tokens.numel() < context + 2:
+        raise ValueError(
+            "text is too small for --context; "
+            "lower the context or add more natural text"
+        )
+
+    highest_start = tokens.numel() - context - 1
+    starts = torch.randint(0, highest_start, (batch_size,))
+
+    x = torch.stack(
+        [tokens[start : start + context] for start in starts]
+    )
+    y = torch.stack(
+        [tokens[start + 1 : start + context + 1] for start in starts]
+    )
+
+    return (
+        x.to(device, non_blocking=True),
+        y.to(device, non_blocking=True),
+    )
 
 
-def make_optimizer(model: ArcNeuron, lr: float, weight_decay: float) -> torch.optim.AdamW:
-    decay = []  # Learned matrices and embeddings receive decoupled weight decay.
-    no_decay = []  # RMSNorm scales remain free from shrinkage.
-    for parameter in model.parameters():  # Tuning updates every neural parameter rather than attaching an adapter beside the model.
-        (decay if parameter.ndim >= 2 else no_decay).append(parameter)  # Matrix rank is a simple transparent parameter-group rule.
-    groups = [  # Both groups use identical Adam moments and learning rate.
-        {"params": decay, "weight_decay": weight_decay},  # Regularize matrix-shaped weights lightly during adaptation.
-        {"params": no_decay, "weight_decay": 0.0},  # Preserve normalization-scale flexibility.
+def make_optimizer(
+    model: ArcNeuron,
+    lr: float,
+    weight_decay: float,
+) -> torch.optim.AdamW:
+    """Create a fresh low-rate AdamW state for tuning."""
+
+    decay: list[Tensor] = []
+    no_decay: list[Tensor] = []
+
+    for parameter in model.parameters():
+        if parameter.ndim >= 2:
+            decay.append(parameter)
+        else:
+            no_decay.append(parameter)
+
+    groups = [
+        {"params": decay, "weight_decay": weight_decay},
+        {"params": no_decay, "weight_decay": 0.0},
     ]
-    return torch.optim.AdamW(groups, lr=lr, betas=(0.9, 0.95), fused=torch.cuda.is_available())  # CUDA gets fused AdamW automatically when available.
+
+    return torch.optim.AdamW(
+        groups,
+        lr=lr,
+        betas=(0.9, 0.95),
+        fused=torch.cuda.is_available(),
+    )
 
 
-def autocast_context(device: torch.device, dtype: torch.dtype):
-    if device.type != "cuda":  # CPU tuning is primarily a correctness path.
-        return nullcontext()  # Avoid unnecessary precision conversion on CPU.
-    return torch.autocast(device_type="cuda", dtype=dtype)  # GPU uses BF16 when possible and FP16 otherwise.
+def learning_rate(
+    step: int,
+    total_steps: int,
+    warmup: int,
+    maximum: float,
+    minimum: float,
+) -> float:
+    """Use a short warmup and cosine decay for gentle continued training."""
+
+    if warmup > 0 and step < warmup:
+        return maximum * (step + 1) / warmup
+
+    if total_steps <= warmup:
+        return maximum
+
+    progress = min(
+        1.0,
+        max(0.0, (step - warmup) / (total_steps - warmup)),
+    )
+
+    cosine = 0.5 * (1.0 + math.cos(math.pi * progress))
+    return minimum + cosine * (maximum - minimum)
 
 
-def save_checkpoint(path: str | Path, model: ArcNeuron, optimizer: torch.optim.Optimizer, tokenizer: ArcTokenizer, tune_step: int, base_step: int) -> None:
-    checkpoint = {  # The tuned file remains independently runnable without the base checkpoint sitting beside it.
-        "format": 1,  # Keep the same simple checkpoint format family as train.py.
-        "model_config": asdict(model.config),  # Generate.py reconstructs the exact architecture from this dictionary.
-        "model_state": model.state_dict(),  # All behavioral changes produced by tuning are inside these neural tensors.
-        "optimizer_state": optimizer.state_dict(),  # The tuning run itself can be continued if needed.
-        "tokenizer_model": tokenizer.to_bytes(),  # Preserve the base token-to-ID mapping exactly.
-        "step": base_step,  # Keep the original base-training progress for provenance.
-        "tune_step": tune_step,  # Record how many continued-training updates were applied afterward.
-        "python_random_state": random.getstate(),  # Save batch-source and recurrence RNG state for reproducible continuation.
-        "torch_random_state": torch.get_rng_state(),  # Save tensor sampling RNG state as well.
+def autocast_context(
+    device: torch.device,
+    dtype: torch.dtype,
+):
+    """Use mixed precision only on CUDA."""
+
+    if device.type != "cuda":
+        return nullcontext()
+
+    return torch.autocast(
+        device_type="cuda",
+        dtype=dtype,
+    )
+
+
+def save_checkpoint(
+    path: str | Path,
+    model: ArcNeuron,
+    optimizer: torch.optim.Optimizer,
+    tokenizer: ArcTokenizer,
+    tune_step: int,
+    base_step: int,
+) -> None:
+    """Write a tuned checkpoint that can run without the base checkpoint."""
+
+    checkpoint = {
+        "format": 1,
+        "model_config": asdict(model.config),
+        "model_state": model.state_dict(),
+        "optimizer_state": optimizer.state_dict(),
+        "tokenizer_model": tokenizer.to_bytes(),
+        "step": base_step,
+        "tune_step": tune_step,
+        "python_random_state": random.getstate(),
+        "torch_random_state": torch.get_rng_state(),
     }
-    torch.save(checkpoint, path)  # One portable file is enough to run the tuned model later.
+
+    if torch.cuda.is_available():
+        checkpoint["cuda_random_state"] = torch.cuda.get_rng_state_all()
+
+    torch.save(checkpoint, path)
+
+
+def format_eta(seconds: float) -> str:
+    """Format ETA compactly."""
+
+    if not math.isfinite(seconds) or seconds < 0:
+        return "?"
+
+    seconds = int(seconds)
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    if hours:
+        return f"{hours:d}h{minutes:02d}m"
+
+    if minutes:
+        return f"{minutes:d}m{seconds:02d}s"
+
+    return f"{seconds:d}s"
 
 
 def main() -> None:
-    args = parse_args()  # Read tuning choices before loading potentially large tensors.
-    if not 0.0 <= args.replay_ratio <= 1.0:  # Replay probability is meaningful only inside a valid probability interval.
+    """Run tuning."""
+
+    args = parse_args()
+
+    if args.steps <= 0:
+        raise ValueError("--steps must be positive")
+    if args.batch_size <= 0:
+        raise ValueError("--batch-size must be positive")
+    if args.grad_accum <= 0:
+        raise ValueError("--grad-accum must be positive")
+    if args.max_depth < 1:
+        raise ValueError("--max-depth must be at least 1")
+    if not 0.0 <= args.replay_ratio <= 1.0:
         raise ValueError("--replay-ratio must be between 0 and 1")
-    random.seed(args.seed)  # Make replay selection and recurrent-depth selection reproducible.
-    torch.manual_seed(args.seed)  # Make random chunk selection reproducible.
-    device = choose_device()  # Select CUDA automatically when available.
-    checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)  # Load the complete base model state on the active runtime device.
-    tokenizer = ArcTokenizer.from_bytes(checkpoint["tokenizer_model"])  # Never retrain tokenization during tuning because embedding IDs must stay fixed.
-    config = ArcNeuronConfig(**checkpoint["model_config"])  # Reconstruct the exact base architecture rather than trusting today's defaults.
-    if args.context > config.max_seq_len:  # Tuning cannot exceed the rotary-position range the model was built to process.
-        raise ValueError("--context cannot exceed the checkpoint max_seq_len")
-    model = ArcNeuron(config).to(device)  # Instantiate only neural architecture before restoring learned behavior.
-    model.load_state_dict(checkpoint["model_state"])  # These base weights contain all language and reasoning ability acquired so far.
-    model.train()  # Continued training updates those same weights directly.
-    optimizer = make_optimizer(model, args.lr, args.weight_decay)  # A fresh low-rate AdamW state avoids carrying high-rate pretraining momentum into tuning.
-    amp_dtype = torch.bfloat16 if device.type == "cuda" and torch.cuda.is_bf16_supported() else torch.float16  # Prefer BF16 on modern accelerators.
-    use_scaler = device.type == "cuda" and amp_dtype == torch.float16  # Only FP16 requires dynamic loss scaling here.
-    scaler = torch.amp.GradScaler("cuda", enabled=use_scaler)  # This object is inert for BF16 and CPU execution.
-    tune_tokens = to_tokens(tokenizer, read_text(args.data))  # Hand-guided tuning prose is tokenized with the unchanged base tokenizer.
-    replay_tokens = to_tokens(tokenizer, read_text(args.replay_data)) if args.replay_ratio > 0.0 else None  # Base text is optional and contributes no new objective.
-    parameter_count = sum(parameter.numel() for parameter in model.parameters())  # Tuning never adds parameters; this count should match the base model exactly.
-    print(f"device={device} params={parameter_count:,} tune_tokens={tune_tokens.numel():,} replay={args.replay_ratio:.2f}")  # Confirm what will actually be updated.
-    started = time.perf_counter()  # Measure practical continued-training throughput.
-    base_step = int(checkpoint.get("step", 0))  # Old checkpoints without the field still have a sensible provenance fallback.
+    if args.log_every <= 0:
+        raise ValueError("--log-every must be positive")
+    if args.save_every < 0:
+        raise ValueError("--save-every cannot be negative")
 
-    for step in range(args.steps):  # Every iteration ends in one direct update of ArcNeuron's own weights.
-        optimizer.zero_grad(set_to_none=True)  # Start the accumulated gradient from an allocation-efficient empty state.
-        depth = random.randint(1, args.max_depth)  # Tuning preserves the model's ability to operate at multiple recurrent compute budgets.
-        accumulated_loss = 0.0  # This Python scalar exists only for logging.
-        replay_batches = 0  # Logging how often replay happened makes forgetting experiments easier to interpret.
+    random.seed(args.seed)
+    torch.manual_seed(args.seed)
 
-        for _ in range(args.grad_accum):  # Multiple text chunks may contribute to the same optimizer step.
-            use_replay = replay_tokens is not None and random.random() < args.replay_ratio  # Replay is stochastic at batch level rather than mixed token-by-token.
-            source = replay_tokens if use_replay else tune_tokens  # The neural objective is identical regardless of which natural-text corpus supplied the chunk.
-            replay_batches += int(use_replay)  # Count replay selections without affecting gradients.
-            x, y = sample_batch(source, args.batch_size, args.context, device)  # Draw a normal contiguous language-model batch.
-            with autocast_context(device, amp_dtype):  # Use efficient GPU precision without changing the network equation.
-                logits = model(x, depth=depth)  # The same recurrent neural core performs all additional computation.
-                loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), y.reshape(-1))  # No instruction mask or separate tuning loss exists.
-                scaled_loss = loss / args.grad_accum  # Keep effective gradient scale constant when accumulation changes.
-            scaler.scale(scaled_loss).backward()  # Backpropagate through the actual ArcNeuron neurons and recurrent applications.
-            accumulated_loss += float(loss.detach())  # Store only a detached scalar for the progress line.
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
+        torch.set_float32_matmul_precision("high")
 
-        scaler.unscale_(optimizer)  # Reveal true gradient magnitude before clipping.
-        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)  # Limit rare unstable recurrent updates.
-        scaler.step(optimizer)  # AdamW changes the same weights that generate text at inference time.
-        scaler.update()  # FP16 scaling adapts to numerical range; BF16/CPU paths remain unchanged.
-        completed = step + 1  # Present tuning progress in human-friendly one-based steps.
+    device = choose_device()
 
-        if completed == 1 or completed % 10 == 0:  # Compact frequent logs are useful during small experimental runs.
-            elapsed = max(time.perf_counter() - started, 1e-9)  # Avoid division by zero in an extremely fast smoke test.
-            processed = completed * args.batch_size * args.context * args.grad_accum  # Count every input token seen by the tuning loop.
-            mean_loss = accumulated_loss / args.grad_accum  # Average raw CE across accumulation microbatches.
-            print(f"tune_step={completed} depth={depth} loss={mean_loss:.4f} grad={float(grad_norm):.3f} replay_batches={replay_batches} tok/s={processed / elapsed:,.0f}")  # Show behavior, stability, replay, and speed in one line.
+    checkpoint = torch.load(
+        args.checkpoint,
+        map_location=device,
+        weights_only=False,
+    )
 
-        if completed % args.save_every == 0 or completed == args.steps:  # The final requested step is always saved even when it misses the normal interval.
-            save_checkpoint(args.out, model, optimizer, tokenizer, completed, base_step)  # Produce a completely self-contained tuned checkpoint.
-            print(f"saved {args.out}")  # Make the artifact location obvious in a notebook output cell.
+    tokenizer = ArcTokenizer.from_bytes(
+        checkpoint["tokenizer_model"]
+    )
+
+    config = ArcNeuronConfig(
+        **checkpoint["model_config"]
+    )
+
+    if args.context > config.max_seq_len:
+        raise ValueError(
+            "--context cannot exceed the checkpoint max_seq_len"
+        )
+
+    model = ArcNeuron(config).to(device)
+    model.load_state_dict(checkpoint["model_state"])
+    model.train()
+
+    optimizer = make_optimizer(
+        model,
+        args.lr,
+        args.weight_decay,
+    )
+
+    amp_dtype = (
+        torch.bfloat16
+        if device.type == "cuda" and torch.cuda.is_bf16_supported()
+        else torch.float16
+    )
+
+    use_scaler = device.type == "cuda" and amp_dtype == torch.float16
+    scaler = torch.amp.GradScaler(
+        "cuda",
+        enabled=use_scaler,
+    )
+
+    tune_tokens = to_tokens(
+        tokenizer,
+        read_text(args.data),
+    )
+
+    replay_tokens = (
+        to_tokens(
+            tokenizer,
+            read_text(args.replay_data),
+        )
+        if args.replay_ratio > 0.0
+        else None
+    )
+
+    parameter_count = sum(
+        parameter.numel()
+        for parameter in model.parameters()
+    )
+
+    print(
+        f"device={device} "
+        f"params={parameter_count:,} "
+        f"context={args.context} "
+        f"tune_tokens={tune_tokens.numel():,} "
+        f"replay_ratio={args.replay_ratio:.2f}",
+        flush=True,
+    )
+
+    if device.type == "cuda":
+        properties = torch.cuda.get_device_properties(device)
+
+        print(
+            f"gpu={torch.cuda.get_device_name(device)} "
+            f"vram={properties.total_memory / 1024**3:.1f}GiB "
+            f"amp={str(amp_dtype).replace('torch.', '')}",
+            flush=True,
+        )
+
+    if tune_tokens.numel() < 10_000:
+        print(
+            "note: tune.txt is deliberately small. "
+            "Tuning should shape response behavior, not teach the whole world.",
+            flush=True,
+        )
+
+    started = time.perf_counter()
+    base_step = int(checkpoint.get("step", 0))
+
+    for step in range(args.steps):
+        current_lr = learning_rate(
+            step,
+            args.steps,
+            args.warmup,
+            args.lr,
+            args.min_lr,
+        )
+
+        for group in optimizer.param_groups:
+            group["lr"] = current_lr
+
+        optimizer.zero_grad(set_to_none=True)
+
+        depth = random.randint(1, args.max_depth)
+        accumulated_loss = 0.0
+        replay_batches = 0
+
+        for _ in range(args.grad_accum):
+            use_replay = (
+                replay_tokens is not None
+                and random.random() < args.replay_ratio
+            )
+
+            source = (
+                replay_tokens
+                if use_replay
+                else tune_tokens
+            )
+
+            replay_batches += int(use_replay)
+
+            x, y = sample_batch(
+                source,
+                args.batch_size,
+                args.context,
+                device,
+            )
+
+            with autocast_context(device, amp_dtype):
+                logits = model(x, depth=depth)
+                loss = F.cross_entropy(
+                    logits.reshape(-1, logits.size(-1)),
+                    y.reshape(-1),
+                )
+                scaled_loss = loss / args.grad_accum
+
+            scaler.scale(scaled_loss).backward()
+            accumulated_loss += float(loss.detach())
+
+        scaler.unscale_(optimizer)
+
+        grad_norm = torch.nn.utils.clip_grad_norm_(
+            model.parameters(),
+            args.clip,
+        )
+
+        scaler.step(optimizer)
+        scaler.update()
+
+        completed = step + 1
+
+        should_log = (
+            completed == 1
+            or completed % args.log_every == 0
+            or completed == args.steps
+        )
+
+        if should_log:
+            elapsed = max(
+                time.perf_counter() - started,
+                1e-9,
+            )
+
+            processed = (
+                completed
+                * args.batch_size
+                * args.context
+                * args.grad_accum
+            )
+
+            tok_per_second = processed / elapsed
+            seconds_per_step = elapsed / completed
+            eta = format_eta(
+                seconds_per_step * (args.steps - completed)
+            )
+
+            mean_loss = accumulated_loss / args.grad_accum
+            progress = 100.0 * completed / args.steps
+
+            memory_text = ""
+
+            if device.type == "cuda":
+                allocated = (
+                    torch.cuda.memory_allocated(device)
+                    / 1024**3
+                )
+                memory_text = f" vram={allocated:.2f}GiB"
+
+            print(
+                f"tune={completed}/{args.steps} "
+                f"({progress:6.2f}%) "
+                f"depth={depth} "
+                f"loss={mean_loss:.4f} "
+                f"lr={current_lr:.2e} "
+                f"grad={float(grad_norm):.3f} "
+                f"replay={replay_batches}/{args.grad_accum} "
+                f"tok/s={tok_per_second:,.0f} "
+                f"eta={eta}"
+                f"{memory_text}",
+                flush=True,
+            )
+
+        should_save = (
+            (args.save_every > 0 and completed % args.save_every == 0)
+            or completed == args.steps
+        )
+
+        if should_save:
+            save_checkpoint(
+                args.out,
+                model,
+                optimizer,
+                tokenizer,
+                completed,
+                base_step,
+            )
+
+            print(
+                f"saved {args.out} at tune step {completed}",
+                flush=True,
+            )
 
 
-if __name__ == "__main__":  # Merely importing tune.py must never modify a model checkpoint.
-    main()  # Command-line execution performs continued plain next-token training.
+if __name__ == "__main__":
+    main()
