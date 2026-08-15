@@ -163,15 +163,16 @@ class RecurrentCore(nn.Module):
     """Shared-weight reasoning core that can be applied an arbitrary number of times."""
 
     def __init__(self, config: ArcNeuronConfig) -> None:
-        super().__init__()  # The mixer and blocks below are the only parameters reused across recurrent iterations.
-        self.mix = nn.Linear(config.dim * 2, config.dim, bias=False)  # Fuse the current state with the untouched prelude context at every iteration.
-        self.blocks = nn.ModuleList(TransformerBlock(config, zero_residual_outputs=True) for _ in range(config.core_layers))  # Core blocks start near identity to make repeated depth easier to optimize.
+        super().__init__()  # The mixer, blocks, and final normalization below are the only parameters reused across recurrent iterations.
+        self.mix = nn.Linear(config.dim * 2, config.dim, bias=False)  # Fuse the evolving state with the untouched prelude context at every iteration instead of letting either source silently replace the other.
+        self.blocks = nn.ModuleList(TransformerBlock(config, zero_residual_outputs=True) for _ in range(config.core_layers))  # Core blocks start near identity so the same residual stack can be repeated without immediately destroying the representation.
+        self.output_norm = RMSNorm(config.dim)  # Normalize the state before it is fed into another recurrent iteration so hidden magnitude cannot drift simply because inference requested more depth.
 
     def forward(self, state: Tensor, context: Tensor) -> Tensor:
-        x = self.mix(torch.cat((state, context), dim=-1))  # Reintroduce original context instead of forcing the evolving state to remember every input detail forever.
-        for block in self.blocks:  # Every recurrent iteration traverses the same small stack in the same order.
-            x = block(x)  # These exact weights will be used again if the caller requests another reasoning iteration.
-        return x  # The returned tensor becomes the state supplied to the next recurrent iteration.
+        x = self.mix(torch.cat((state, context), dim=-1))  # The neural mixer receives both the current latent state and the original encoded input on every recurrent pass.
+        for block in self.blocks:  # Every recurrent iteration traverses the exact same shared Transformer blocks in the same order.
+            x = block(x)  # These exact weights are reused again when the caller requests another reasoning iteration.
+        return self.output_norm(x)  # The next recurrent iteration receives a controlled-scale neural state rather than an activation whose magnitude can grow with depth.
 
 
 class ArcNeuron(nn.Module):
@@ -198,12 +199,14 @@ class ArcNeuron(nn.Module):
             nn.init.normal_(module.weight, mean=0.0, std=0.02)  # No pretrained lexical meaning is injected into the embedding table.
 
     def _stabilize_core_initialization(self) -> None:
-        nn.init.zeros_(self.core.mix.weight)  # Start the recurrent mixer with no arbitrary rotation of either state or context.
-        with torch.no_grad():  # Initialization changes parameter values directly and must not create an autograd graph.
-            self.core.mix.weight[:, : self.config.dim].copy_(torch.eye(self.config.dim, device=self.core.mix.weight.device, dtype=self.core.mix.weight.dtype))  # Copy the current state through unchanged at step zero while leaving the context path learnable from zero.
-        for block in self.core.blocks:  # Only recurrent blocks need to begin as gentle repeated transformations.
-            nn.init.zeros_(block.attn.o_proj.weight)  # Zero attention residual output makes that branch initially contribute nothing.
-            nn.init.zeros_(block.ffn.down_proj.weight)  # Zero feed-forward residual output does the same for the nonlinear branch.
+        nn.init.zeros_(self.core.mix.weight)  # Clear the generic random mixer initialization so the recurrent path starts from a known and auditable state/context balance.
+        with torch.no_grad():  # Initialization writes parameter values directly and therefore must not create an autograd graph.
+            identity = torch.eye(self.config.dim, device=self.core.mix.weight.device, dtype=self.core.mix.weight.dtype)  # Build one identity map in the exact dtype and device used by the recurrent mixer.
+            self.core.mix.weight[:, : self.config.dim].copy_(identity * 0.5)  # Give the evolving recurrent state half of the initial mixer contribution instead of letting it own the whole path.
+            self.core.mix.weight[:, self.config.dim :].copy_(identity * 0.5)  # Give the untouched prelude context the other half so context reinjection is real from the very first optimizer step rather than initially being multiplied by zero.
+        for block in self.core.blocks:  # Only recurrent residual branches need the identity-friendly zero-output initialization.
+            nn.init.zeros_(block.attn.o_proj.weight)  # Zero attention residual output makes that branch initially contribute nothing while its output projection can immediately receive gradients.
+            nn.init.zeros_(block.ffn.down_proj.weight)  # Zero feed-forward residual output does the same for the nonlinear branch and keeps repeated untrained passes numerically gentle.
 
     def forward(self, tokens: Tensor, depth: int = 3) -> Tensor:
         if tokens.ndim != 2:  # A language-model batch must be [batch, sequence], not a pre-embedded tensor or a flat list.
