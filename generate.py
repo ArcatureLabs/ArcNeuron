@@ -1,109 +1,407 @@
 """Generate text from a trained ArcNeuron checkpoint.
 
-This file contains only numerical decoding policy: load the checkpoint, run the
-neural network, sample its next-token distribution, and feed the sampled token
-back as the next input.  It contains no factual database, reasoning rule,
-prompt classifier, tool call, answer template, or task-specific branch.
+This file contains decoding policy only. It loads the neural checkpoint, asks the
+model for next-token logits, applies generic sampling controls, and feeds sampled
+tokens back autoregressively. It contains no fact database, symbolic reasoning
+rule, answer template, prompt classifier, or task-specific branch.
 """
 
-import argparse  # A tiny CLI makes generation convenient in both Colab cells and normal terminals.
-from pathlib import Path  # Checkpoint existence is checked with an explicit platform-independent path.
+import argparse
+from pathlib import Path
 
-import torch  # ArcNeuron inference is tensor computation executed by PyTorch.
-from torch.nn import functional as F  # Softmax turns the model's learned logits into a sampling distribution.
+import torch
+from torch.nn import functional as F
 
-from arcneuron import ArcNeuron, ArcNeuronConfig  # Reconstruct the exact neural architecture stored by the checkpoint.
-from tokenizer import ArcTokenizer  # Decode and encode with the exact tokenizer stored beside those weights.
+from arcneuron import ArcNeuron, ArcNeuronConfig
+from tokenizer import ArcTokenizer
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate text with ArcNeuron")  # Keep all decoding controls discoverable through --help.
-    parser.add_argument("prompt", nargs="?", default=None)  # A positional prompt makes one-shot terminal generation pleasantly short.
-    parser.add_argument("--checkpoint", default="arcneuron-tuned.pt")  # Prefer the tuned model while allowing the base checkpoint explicitly.
-    parser.add_argument("--depth", type=int, default=4)  # Recurrent depth is the direct test-time compute knob of ArcNeuron.
-    parser.add_argument("--max-new-tokens", type=int, default=256)  # Hard output limits prevent an unfinished small model from generating forever.
-    parser.add_argument("--temperature", type=float, default=0.8)  # Values below one sharpen the neural distribution without changing model weights.
-    parser.add_argument("--top-k", type=int, default=50)  # Optional top-k sampling removes extremely unlikely tails from each next-token draw.
-    parser.add_argument("--seed", type=int, default=42)  # Deterministic sampling is useful when comparing recurrent depths on the same prompt.
-    return parser.parse_args()  # Generation behavior is now fully visible in one plain namespace.
+    """Read generation settings."""
+
+    parser = argparse.ArgumentParser(
+        description="Generate text with ArcNeuron"
+    )
+
+    parser.add_argument("prompt", nargs="?", default=None)
+    parser.add_argument(
+        "--checkpoint",
+        default="arcneuron-tuned.pt",
+    )
+    parser.add_argument("--depth", type=int, default=4)
+    parser.add_argument(
+        "--max-new-tokens",
+        type=int,
+        default=256,
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.75,
+    )
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=40,
+    )
+    parser.add_argument(
+        "--top-p",
+        type=float,
+        default=0.92,
+    )
+    parser.add_argument(
+        "--repetition-penalty",
+        type=float,
+        default=1.08,
+    )
+    parser.add_argument(
+        "--repeat-window",
+        type=int,
+        default=128,
+    )
+    parser.add_argument(
+        "--include-prompt",
+        action="store_true",
+    )
+    parser.add_argument("--seed", type=int, default=42)
+
+    return parser.parse_args()
 
 
 def choose_device() -> torch.device:
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")  # CUDA is used automatically when a Colab GPU runtime is active.
+    """Prefer CUDA automatically."""
+
+    return torch.device(
+        "cuda" if torch.cuda.is_available() else "cpu"
+    )
 
 
-def load_model(path: str | Path, device: torch.device) -> tuple[ArcNeuron, ArcTokenizer]:
-    checkpoint_path = Path(path)  # Normalize the user-supplied checkpoint path before opening it.
-    if not checkpoint_path.is_file():  # A clear early error is better than a long torch.load traceback for a mistyped path.
+def load_model(
+    path: str | Path,
+    device: torch.device,
+) -> tuple[ArcNeuron, ArcTokenizer]:
+    """Reconstruct the exact neural model and tokenizer from one checkpoint."""
+
+    checkpoint_path = Path(path)
+
+    if not checkpoint_path.is_file():
         raise FileNotFoundError(checkpoint_path)
-    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)  # Load learned tensors directly onto the active inference device.
-    config = ArcNeuronConfig(**checkpoint["model_config"])  # Exact architectural sizes come from training, not from duplicated constants here.
-    model = ArcNeuron(config).to(device)  # Build only the neural graph described by the saved configuration.
-    model.load_state_dict(checkpoint["model_state"])  # Every learned behavior is restored from neural weights.
-    model.eval()  # ArcNeuron R1 has no dropout, but eval mode is still the correct inference contract.
-    tokenizer = ArcTokenizer.from_bytes(checkpoint["tokenizer_model"])  # Token IDs must match the embedding rows learned by this exact checkpoint.
-    return model, tokenizer  # Generation now has only a neural model and a reversible text codec.
+
+    checkpoint = torch.load(
+        checkpoint_path,
+        map_location=device,
+        weights_only=False,
+    )
+
+    config = ArcNeuronConfig(
+        **checkpoint["model_config"]
+    )
+
+    model = ArcNeuron(config).to(device)
+    model.load_state_dict(checkpoint["model_state"])
+    model.eval()
+
+    tokenizer = ArcTokenizer.from_bytes(
+        checkpoint["tokenizer_model"]
+    )
+
+    return model, tokenizer
 
 
-def sample_next(logits: torch.Tensor, temperature: float, top_k: int) -> int:
-    if temperature < 0.0:  # Negative temperatures have no meaningful probabilistic interpretation.
-        raise ValueError("temperature cannot be negative")
-    if temperature == 0.0:  # Zero temperature is defined here as deterministic greedy decoding.
-        return int(torch.argmax(logits).item())  # Choose exactly the most probable token predicted by the neural model.
-    scaled = logits / temperature  # Temperature rescales confidence while preserving the model's ranking of token logits.
-    if top_k > 0 and top_k < scaled.numel():  # Keep all tokens when top_k is zero or larger than the whole vocabulary.
-        values, indices = torch.topk(scaled, top_k)  # Extract the strongest learned candidates for this one decoding step.
-        probabilities = F.softmax(values, dim=-1)  # Convert those candidate logits into a normalized categorical distribution.
-        chosen = torch.multinomial(probabilities, num_samples=1)  # Randomness samples one candidate according to the model's own probabilities.
-        return int(indices[chosen].item())  # Map the sampled position back to the original vocabulary ID.
-    probabilities = F.softmax(scaled, dim=-1)  # Without top-k, normalize the complete model vocabulary.
-    return int(torch.multinomial(probabilities, num_samples=1).item())  # Draw one next token directly from ArcNeuron's distribution.
+def apply_repetition_penalty(
+    logits: torch.Tensor,
+    recent_ids: list[int],
+    penalty: float,
+) -> torch.Tensor:
+    """Discourage immediate repetition without adding any semantic rule."""
+
+    if penalty < 1.0:
+        raise ValueError(
+            "repetition_penalty must be at least 1.0"
+        )
+
+    if penalty == 1.0 or not recent_ids:
+        return logits
+
+    logits = logits.clone()
+    unique_ids = torch.tensor(
+        list(set(recent_ids)),
+        dtype=torch.long,
+        device=logits.device,
+    )
+
+    selected = logits[unique_ids]
+    selected = torch.where(
+        selected < 0,
+        selected * penalty,
+        selected / penalty,
+    )
+    logits[unique_ids] = selected
+
+    return logits
+
+
+def apply_top_k(
+    logits: torch.Tensor,
+    top_k: int,
+) -> torch.Tensor:
+    """Keep only the strongest k candidate logits when requested."""
+
+    if top_k <= 0 or top_k >= logits.numel():
+        return logits
+
+    threshold = torch.topk(
+        logits,
+        top_k,
+    ).values[-1]
+
+    return logits.masked_fill(
+        logits < threshold,
+        float("-inf"),
+    )
+
+
+def apply_top_p(
+    logits: torch.Tensor,
+    top_p: float,
+) -> torch.Tensor:
+    """Nucleus-filter a logit vector while retaining at least one token."""
+
+    if not 0.0 < top_p <= 1.0:
+        raise ValueError(
+            "top_p must be in the interval (0, 1]"
+        )
+
+    if top_p >= 1.0:
+        return logits
+
+    sorted_logits, sorted_indices = torch.sort(
+        logits,
+        descending=True,
+    )
+    sorted_probabilities = F.softmax(
+        sorted_logits,
+        dim=-1,
+    )
+    cumulative = torch.cumsum(
+        sorted_probabilities,
+        dim=-1,
+    )
+
+    remove = cumulative > top_p
+    remove[1:] = remove[:-1].clone()
+    remove[0] = False
+
+    sorted_logits = sorted_logits.masked_fill(
+        remove,
+        float("-inf"),
+    )
+
+    filtered = torch.full_like(
+        logits,
+        float("-inf"),
+    )
+    filtered.scatter_(
+        0,
+        sorted_indices,
+        sorted_logits,
+    )
+
+    return filtered
+
+
+def sample_next(
+    logits: torch.Tensor,
+    recent_ids: list[int],
+    temperature: float,
+    top_k: int,
+    top_p: float,
+    repetition_penalty: float,
+) -> int:
+    """Choose one next token from ArcNeuron's learned distribution."""
+
+    if temperature < 0.0:
+        raise ValueError(
+            "temperature cannot be negative"
+        )
+
+    logits = apply_repetition_penalty(
+        logits,
+        recent_ids,
+        repetition_penalty,
+    )
+
+    if temperature == 0.0:
+        return int(torch.argmax(logits).item())
+
+    logits = logits / temperature
+    logits = apply_top_k(logits, top_k)
+    logits = apply_top_p(logits, top_p)
+
+    probabilities = F.softmax(
+        logits,
+        dim=-1,
+    )
+
+    return int(
+        torch.multinomial(
+            probabilities,
+            num_samples=1,
+        ).item()
+    )
 
 
 @torch.inference_mode()
-def generate(model: ArcNeuron, tokenizer: ArcTokenizer, prompt: str, depth: int, max_new_tokens: int, temperature: float, top_k: int, device: torch.device) -> str:
-    if depth < 1:  # ArcNeuron's recurrent core must execute at least once.
-        raise ValueError("depth must be at least 1")
-    if max_new_tokens < 0:  # A negative loop count would be a caller mistake rather than a useful decoding mode.
-        raise ValueError("max_new_tokens cannot be negative")
-    token_ids = tokenizer.encode(prompt, add_bos=True, add_eos=False)  # The user prompt is encoded with no hidden instruction or semantic preprocessing.
-    generated = list(token_ids)  # Keep the complete autoregressive history because each new token conditions on all previous tokens in context.
+def generate(
+    model: ArcNeuron,
+    tokenizer: ArcTokenizer,
+    prompt: str,
+    depth: int,
+    max_new_tokens: int,
+    temperature: float,
+    top_k: int,
+    device: torch.device,
+    top_p: float = 0.92,
+    repetition_penalty: float = 1.08,
+    repeat_window: int = 128,
+    include_prompt: bool = False,
+) -> str:
+    """Generate one autoregressive continuation."""
 
-    for _ in range(max_new_tokens):  # One iteration asks the neural model for exactly one additional token.
-        visible = generated[-model.config.max_seq_len :]  # Crop only when history exceeds the architecture's declared context window.
-        x = torch.tensor([visible], dtype=torch.long, device=device)  # Shape one integer token sequence into a batch of size one.
-        logits = model(x, depth=depth)  # All language understanding and reasoning computation happens inside ArcNeuron's learned neurons.
-        next_id = sample_next(logits[0, -1], temperature, top_k)  # Sampling policy chooses from the model's final next-token distribution.
-        generated.append(next_id)  # Autoregressive decoding feeds the chosen token back into the next neural forward pass.
-        if next_id == tokenizer.eos_id:  # EOS is the only learned sequence-boundary condition used to stop early.
-            break  # No domain-specific answer rule participates in stopping.
+    if depth < 1:
+        raise ValueError(
+            "depth must be at least 1"
+        )
 
-    return tokenizer.decode(generated)  # Decode the complete prompt and continuation exactly through the checkpoint tokenizer.
+    if max_new_tokens < 0:
+        raise ValueError(
+            "max_new_tokens cannot be negative"
+        )
+
+    if repeat_window < 0:
+        raise ValueError(
+            "repeat_window cannot be negative"
+        )
+
+    prompt_ids = tokenizer.encode(
+        prompt,
+        add_bos=True,
+        add_eos=False,
+    )
+
+    generated = list(prompt_ids)
+
+    for _ in range(max_new_tokens):
+        visible = generated[
+            -model.config.max_seq_len :
+        ]
+
+        x = torch.tensor(
+            [visible],
+            dtype=torch.long,
+            device=device,
+        )
+
+        logits = model(
+            x,
+            depth=depth,
+        )
+
+        recent_ids = (
+            generated[-repeat_window:]
+            if repeat_window > 0
+            else []
+        )
+
+        next_id = sample_next(
+            logits[0, -1],
+            recent_ids,
+            temperature,
+            top_k,
+            top_p,
+            repetition_penalty,
+        )
+
+        generated.append(next_id)
+
+        if next_id == tokenizer.eos_id:
+            break
+
+    full_text = tokenizer.decode(generated)
+
+    if include_prompt:
+        return full_text
+
+    decoded_prompt = tokenizer.decode(prompt_ids)
+
+    if full_text.startswith(decoded_prompt):
+        return full_text[len(decoded_prompt) :].lstrip()
+
+    return tokenizer.decode(
+        generated[len(prompt_ids) :]
+    ).lstrip()
 
 
 def main() -> None:
-    args = parse_args()  # Read checkpoint and sampling controls once at process start.
-    torch.manual_seed(args.seed)  # Make multinomial draws reproducible for fair depth or checkpoint comparisons.
-    if torch.cuda.is_available():  # CUDA has a separate RNG stream used by GPU multinomial sampling.
-        torch.cuda.manual_seed_all(args.seed)  # Seed every visible GPU with the same requested generation seed.
-    device = choose_device()  # Use the current Colab GPU automatically when present.
-    checkpoint = args.checkpoint  # Keep the requested path visible before fallback handling.
-    if not Path(checkpoint).is_file() and checkpoint == "arcneuron-tuned.pt" and Path("arcneuron.pt").is_file():  # Fresh users often have only a base checkpoint before running tune.py.
-        checkpoint = "arcneuron.pt"  # Fall back only by filename existence, never by prompt content or task type.
-    model, tokenizer = load_model(checkpoint, device)  # Restore the self-contained neural checkpoint.
+    """Run one-shot or interactive generation."""
 
-    if args.prompt is not None:  # A supplied positional prompt runs one non-interactive generation and exits.
-        print(generate(model, tokenizer, args.prompt, args.depth, args.max_new_tokens, args.temperature, args.top_k, device))  # Print exactly what the model and tokenizer produced.
-        return  # Do not enter interactive input after satisfying the one-shot request.
+    args = parse_args()
 
-    print(f"ArcNeuron loaded from {checkpoint} on {device}. Empty input exits.")  # Interactive mode shows only runtime state, not any synthetic assistant persona.
-    while True:  # Reuse the same loaded neural weights for multiple manual experiments.
-        prompt = input("\n> ")  # The terminal passes raw user text straight to the tokenizer.
-        if not prompt:  # An empty line is a simple local-interface exit convention.
-            break  # Exit without sending any magic command token through the model.
-        result = generate(model, tokenizer, prompt, args.depth, args.max_new_tokens, args.temperature, args.top_k, device)  # Run the same generic neural continuation path for every prompt.
-        print(result)  # Show the complete decoded prompt plus continuation so token-boundary spacing remains faithful.
+    torch.manual_seed(args.seed)
+
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
+        torch.set_float32_matmul_precision("high")
+
+    device = choose_device()
+
+    checkpoint = args.checkpoint
+
+    if (
+        not Path(checkpoint).is_file()
+        and checkpoint == "arcneuron-tuned.pt"
+        and Path("arcneuron.pt").is_file()
+    ):
+        checkpoint = "arcneuron.pt"
+
+    model, tokenizer = load_model(
+        checkpoint,
+        device,
+    )
+
+    def run(prompt: str) -> str:
+        return generate(
+            model=model,
+            tokenizer=tokenizer,
+            prompt=prompt,
+            depth=args.depth,
+            max_new_tokens=args.max_new_tokens,
+            temperature=args.temperature,
+            top_k=args.top_k,
+            top_p=args.top_p,
+            repetition_penalty=args.repetition_penalty,
+            repeat_window=args.repeat_window,
+            include_prompt=args.include_prompt,
+            device=device,
+        )
+
+    if args.prompt is not None:
+        print(run(args.prompt))
+        return
+
+    print(
+        f"ArcNeuron loaded from {checkpoint} on {device}. "
+        "Empty input exits."
+    )
+
+    while True:
+        prompt = input("\n> ")
+
+        if not prompt:
+            break
+
+        print(run(prompt))
 
 
-if __name__ == "__main__":  # Importing helpers for experiments must never start an interactive terminal loop.
-    main()  # Direct execution provides either one-shot or interactive generation.
+if __name__ == "__main__":
+    main()
