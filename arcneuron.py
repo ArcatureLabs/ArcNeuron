@@ -35,6 +35,14 @@ class ArcNeuronConfig:
     core_layers: int = 2  # Transformer blocks reused inside every recurrent reasoning iteration.
     coda_layers: int = 1  # Non-recurrent Transformer blocks that turn the final state into an answer-ready state.
     rope_theta: float = 10_000.0  # Base frequency used by rotary positional embeddings.
+    # --- Optional recurrent-depth research knobs (off by default = original ArcNeuron behavior). ---
+    # These exist only so each architectural choice can be turned on or off for a controlled ablation
+    # without rewriting the math; none of them adds a new reasoning subsystem to the model.
+    sandwich_norm: bool = False  # When true, core blocks use post-residual RMSNorm (4 norms/block) so residual magnitude cannot grow across many recurrent iterations.
+    emb_scale: bool = False  # When true, scale the token embedding by sqrt(dim) so the recurrent state and the reinjected context enter the mixer at comparable magnitudes (Huginn's balance).
+    random_state_init: bool = False  # When true, start the recurrent state from a truncated-normal tensor of variance 0.4 instead of copying the prelude context, so iterative computation is not merely a perturbation of the input.
+    out_proj_shrink_init: bool = False  # When true, initialize recurrent residual outputs with std = sqrt(2/(5*dim))/sqrt(2*L) instead of zeros, where L is total effective depth; this is Huginn's identity-friendly alternative to zeroing.
+    max_depth_default: int = 4  # Nominal training recurrence used only to size the out-proj shrink factor L; it does not change inference depth, which is still a runtime argument.
 
     def __post_init__(self) -> None:
         """Reject shapes that cannot form a valid grouped-query Transformer."""
@@ -148,14 +156,21 @@ class TransformerBlock(nn.Module):
 
     def __init__(self, config: ArcNeuronConfig, zero_residual_outputs: bool = False) -> None:
         super().__init__()  # Norms, attention, and feed-forward modules become a single Transformer block.
+        self.sandwich = config.sandwich_norm  # Sandwich normalization keeps the residual stream bounded across many recurrent iterations by normalizing after each residual addition.
         self.attn_norm = RMSNorm(config.dim)  # Normalize the state before attention so residual scale stays predictable.
         self.attn = CausalSelfAttention(config, zero_output=zero_residual_outputs)  # Compute contextual token interactions.
         self.ffn_norm = RMSNorm(config.dim)  # Normalize again before the nonlinear feed-forward transformation.
         self.ffn = SwiGLU(config, zero_output=zero_residual_outputs)  # Transform features independently at every token position.
+        self.attn_out_norm = RMSNorm(config.dim) if self.sandwich else None  # An extra norm after the attention residual re-normalizes the stream that will be iterated.
+        self.ffn_out_norm = RMSNorm(config.dim) if self.sandwich else None  # An extra norm after the feed-forward residual re-normalizes the state before the next iteration.
 
     def forward(self, x: Tensor) -> Tensor:
         x = x + self.attn(self.attn_norm(x))  # The first residual path lets attention refine rather than replace the current representation.
+        if self.sandwich:  # Normalizing after the residual addition stops residual magnitude from drifting across deep recurrence (Huginn uses this at scale).
+            x = self.attn_out_norm(x)
         x = x + self.ffn(self.ffn_norm(x))  # The second residual path lets the MLP refine the attention-updated representation.
+        if self.sandwich:  # The matching post-MLP norm keeps the stream that the next iteration will receive on a controlled scale.
+            x = self.ffn_out_norm(x)
         return x  # The block keeps exactly the same [batch, time, dim] shape it received.
 
 
@@ -204,9 +219,18 @@ class ArcNeuron(nn.Module):
             identity = torch.eye(self.config.dim, device=self.core.mix.weight.device, dtype=self.core.mix.weight.dtype)  # Build one identity map in the exact dtype and device used by the recurrent mixer.
             self.core.mix.weight[:, : self.config.dim].copy_(identity * 0.5)  # Give the evolving recurrent state half of the initial mixer contribution instead of letting it own the whole path.
             self.core.mix.weight[:, self.config.dim :].copy_(identity * 0.5)  # Give the untouched prelude context the other half so context reinjection is real from the very first optimizer step rather than initially being multiplied by zero.
-        for block in self.core.blocks:  # Only recurrent residual branches need the identity-friendly zero-output initialization.
-            nn.init.zeros_(block.attn.o_proj.weight)  # Zero attention residual output makes that branch initially contribute nothing while its output projection can immediately receive gradients.
-            nn.init.zeros_(block.ffn.down_proj.weight)  # Zero feed-forward residual output does the same for the nonlinear branch and keeps repeated untrained passes numerically gentle.
+        if self.config.out_proj_shrink_init:  # Huginn's alternative to zeroing: shrink recurrent residual outputs by 1/sqrt(2L) instead of zeroing them, so gradients flow immediately while the core still starts near identity.
+            dim = self.config.dim
+            base_std = (2.0 / (5.0 * dim)) ** 0.5  # The Nguyen-Salazar variance baseline used by Huginn's Takase init.
+            effective_depth = self.config.prelude_layers + self.config.core_layers * self.config.max_depth_default + self.config.coda_layers  # Total effective depth at the nominal training recurrence; shrinkage scales with it.
+            shrink = 1.0 / (2.0 * effective_depth) ** 0.5  # The 1/sqrt(2L) factor keeps repeated untrained passes gentle like zeroing, but lets the branch learn away from zero immediately.
+            for block in self.core.blocks:  # Only recurrent residual outputs receive the shrinkage; ordinary prelude/coda blocks keep their normal init.
+                nn.init.normal_(block.attn.o_proj.weight, mean=0.0, std=base_std * shrink)  # Shrunken attention residual output instead of zeros.
+                nn.init.normal_(block.ffn.down_proj.weight, mean=0.0, std=base_std * shrink)  # Shrunken feed-forward residual output instead of zeros.
+        else:  # The original ArcNeuron choice: zero recurrent residual outputs so the untrained core is exactly identity.
+            for block in self.core.blocks:  # Only recurrent residual branches need the identity-friendly zero-output initialization.
+                nn.init.zeros_(block.attn.o_proj.weight)  # Zero attention residual output makes that branch initially contribute nothing while its output projection can immediately receive gradients.
+                nn.init.zeros_(block.ffn.down_proj.weight)  # Zero feed-forward residual output does the same for the nonlinear branch and keeps repeated untrained passes numerically gentle.
 
     def forward(self, tokens: Tensor, depth: int = 3) -> Tensor:
         if tokens.ndim != 2:  # A language-model batch must be [batch, sequence], not a pre-embedded tensor or a flat list.
@@ -216,10 +240,19 @@ class ArcNeuron(nn.Module):
         if depth < 1:  # At least one recurrent pass is part of the ArcNeuron architecture by definition.
             raise ValueError("depth must be at least 1")
         x = self.embedding(tokens)  # Learned embeddings are the only conversion from token IDs into neural activations.
+        if self.config.emb_scale:  # Huginn scales the embedding by sqrt(dim) so the reinjected context and the recurrent state enter the mixer at comparable magnitudes.
+            x = x * (self.config.dim ** 0.5)
         for block in self.prelude:  # Prelude blocks build a stable contextual representation of the current sequence.
             x = block(x)  # No external rule or feature is injected; everything comes from the learned tensors.
         context = x  # Preserve the prelude representation so every recurrent iteration can revisit the original encoded input.
-        state = context  # Reasoning starts from the same representation rather than from a separately engineered memory structure.
+        if self.config.random_state_init:  # Start the recurrent state from a fixed-variance random tensor instead of copying the prelude output, so iteration is not merely a perturbation of the input.
+            state = torch.zeros_like(x)  # Allocate the state on the same device and shape as the prelude output before filling it.
+            std = (2.0 / 5.0) ** 0.5  # Huginn's state variance is 2/5, matching the expected hidden-activation scale under its init scheme.
+            with torch.no_grad():  # State initialization writes tensors directly and must not build an autograd graph.
+                torch.nn.init.trunc_normal_(state, mean=0.0, std=std, a=-3 * std, b=3 * std)  # A bounded random state gives the core a meaningfully different starting point every recurrent run.
+            state = state.to(x.dtype)  # Match the activation dtype so the mixer's two inputs stay on the same numeric path.
+        else:  # The original ArcNeuron choice: reasoning starts from the same representation as the context.
+            state = context  # Reasoning starts from the same representation rather than from a separately engineered memory structure.
         for _ in range(depth):  # More iterations spend more computation while reusing exactly the same core parameters.
             state = self.core(state, context)  # The evolving hidden state is the model's only recurrent reasoning state.
         for block in self.coda:  # Coda blocks convert the final recurrent representation into a state suited for next-token prediction.
