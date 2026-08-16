@@ -93,11 +93,16 @@ def load_model(
         weights_only=False,
     )
 
-    config = ArcNeuronConfig(
-        **checkpoint["model_config"]
-    )
-
-    model = ArcNeuron(config).to(device)
+    arch = checkpoint.get("arch", "arcneuron")  # The saved arch tag selects which architecture class owns these weights.
+    if arch == "baseline":  # A baseline checkpoint reconstructs the non-recurrent stack.
+        from baseline_transformer import BaselineTransformer, BaselineConfig
+        config = BaselineConfig(**checkpoint["model_config"])
+        model = BaselineTransformer(config).to(device)
+    else:  # Normal ArcNeuron reconstructs the recurrent-depth architecture.
+        config = ArcNeuronConfig(
+            **checkpoint["model_config"]
+        )
+        model = ArcNeuron(config).to(device)
     model.load_state_dict(checkpoint["model_state"])
     model.eval()
 
