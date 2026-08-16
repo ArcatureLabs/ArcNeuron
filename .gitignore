@@ -1,0 +1,14 @@
+# Temporary overnight research artifacts - not part of the ArcNeuron release.
+
+# Local-only scratch directories and files.
+vol/
+local_results/
+scratch/
+
+# Modal / runtime clutter.
+*.log
+__pycache__/
+*.pyc
+
+# Checkpoints are too large for git; stored on Modal volume and local disk.
+*.pt
