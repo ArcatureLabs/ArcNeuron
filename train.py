@@ -55,6 +55,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--core-layers", type=int, default=2)  # Shared recurrent depth per iteration remains explicitly controlled by the experiment.
     parser.add_argument("--coda-layers", type=int, default=1)  # Non-recurrent output depth remains explicitly controlled by the experiment.
     parser.add_argument("--max-depth", type=int, default=4)  # Training samples recurrence between one and this value so one checkpoint learns multiple compute budgets.
+    parser.add_argument("--arch", choices=["arcneuron", "baseline"], default="arcneuron")  # Selecting the conventional non-recurrent baseline reuses this trainer so the mandatory parameter/compute comparison shares one honest loop.
+    parser.add_argument("--baseline-layers", type=int, default=4)  # Total stacked blocks for the baseline; matched to prelude+core+coda when fair comparison is requested.
+    parser.add_argument("--character-coverage", type=float, default=1.0)  # SentencePiece coverage: lower it when a multilingual corpus has more distinct characters than the requested vocab can hold.
+    # --- Recurrent-depth research knobs (off by default = original ArcNeuron behavior; each is a controlled ablation). ---
+    parser.add_argument("--sandwich-norm", action="store_true")  # Use post-residual RMSNorm in core blocks so residual magnitude cannot grow across deep recurrence (Huginn uses this at scale).
+    parser.add_argument("--emb-scale", action="store_true")  # Scale the token embedding by sqrt(dim) so reinjected context and recurrent state enter the mixer at comparable magnitudes.
+    parser.add_argument("--random-state-init", action="store_true")  # Start the recurrent state from a truncated-normal tensor of variance 0.4 instead of copying the prelude context.
+    parser.add_argument("--out-proj-shrink-init", action="store_true")  # Initialize recurrent residual outputs with std = sqrt(2/(5*dim))/sqrt(2L) instead of zeros (Huginn's identity-friendly alternative).
+    parser.add_argument("--max-depth-default", type=int, default=4)  # Nominal training recurrence used only to size the out-proj shrink factor L; it does not change inference depth.
 
     parser.add_argument("--lr", type=float, default=3e-4)  # AdamW peak learning rate remains easy to override for scaling experiments.
     parser.add_argument("--min-lr", type=float, default=3e-5)  # Cosine decay stops at a nonzero floor instead of collapsing updates completely.
@@ -244,8 +253,11 @@ def estimate_loss(model: torch.nn.Module, tokens: Tensor, batch_size: int, conte
 
 
 def save_checkpoint(path: str | Path, model: ArcNeuron, optimizer: torch.optim.Optimizer, tokenizer: ArcTokenizer, step: int, best_val_loss: float, training_plan: dict[str, int | float | str]) -> None:
+    path = Path(path)  # Normalize so the parent-directory creation below works on any input type.
+    path.parent.mkdir(parents=True, exist_ok=True)  # Create the checkpoint directory so deep volume paths like /vol/ckpt/baseline_A work without pre-creating them.
     checkpoint = {  # Everything required to reconstruct the neural training state lives in one portable file.
         "format": 2,  # Format two records the data-aware schedule metadata while keeping model reconstruction straightforward.
+        "arch": "baseline" if type(model).__name__ == "BaselineTransformer" else "arcneuron",  # Record which architecture class owns these weights so resume rebuilds the right graph.
         "model_config": asdict(model.config),  # Architecture dimensions travel with the weights instead of being duplicated in generate.py.
         "model_state": model.state_dict(),  # These tensors contain the learned behavior used at inference time.
         "optimizer_state": optimizer.state_dict(),  # Resume can continue AdamW momentum instead of restarting optimization dynamics.
@@ -274,6 +286,46 @@ def format_eta(seconds: float) -> str:
     return f"{seconds:d}s"  # Very short runs only need seconds.
 
 
+def build_model(args: argparse.Namespace, tokenizer: ArcTokenizer, context: int) -> tuple[torch.nn.Module, object]:
+    """Build either the recurrent ArcNeuron or the non-recurrent baseline.
+
+    The baseline is imported lazily so normal ArcNeuron-only runs do not require
+    the temporary baseline module to be present on the import path.
+    """
+
+    if args.arch == "baseline":  # A conventional stacked Transformer answers the mandatory "is recurrence worth it" question.
+        from baseline_transformer import BaselineTransformer, BaselineConfig  # Imported only when the baseline is requested so ArcNeuron-only runs stay self-contained.
+        baseline_config = BaselineConfig(  # Baseline shares dim/heads/ffn with ArcNeuron so the comparison is about recurrence, not width.
+            vocab_size=tokenizer.vocab_size,  # Embedding rows match the same trained tokenizer.
+            dim=args.dim,  # Same hidden width as ArcNeuron.
+            n_heads=args.heads,  # Same query-head count.
+            n_kv_heads=args.kv_heads,  # Same grouped-query ratio.
+            ffn_dim=args.ffn_dim,  # Same SwiGLU width.
+            max_seq_len=context,  # Context is part of the architecture exactly as it is for ArcNeuron.
+            n_layers=args.baseline_layers,  # Total stacked blocks; matched to prelude+core+coda when fair comparison is requested.
+        )
+        model = BaselineTransformer(baseline_config)  # A plain non-recurrent stack with the same block primitives.
+        return model, baseline_config
+    config = ArcNeuronConfig(  # The default recurrent-depth architecture.
+        vocab_size=tokenizer.vocab_size,
+        dim=args.dim,
+        n_heads=args.heads,
+        n_kv_heads=args.kv_heads,
+        ffn_dim=args.ffn_dim,
+        max_seq_len=context,
+        prelude_layers=args.prelude_layers,
+        core_layers=args.core_layers,
+        coda_layers=args.coda_layers,
+        sandwich_norm=args.sandwich_norm,  # Sandwich norm in core blocks; off = original behavior.
+        emb_scale=args.emb_scale,  # Embedding scaling; off = original behavior.
+        random_state_init=args.random_state_init,  # Random recurrent state init; off = state = context (original).
+        out_proj_shrink_init=args.out_proj_shrink_init,  # Shrunken recurrent residual init; off = zero init (original).
+        max_depth_default=args.max_depth_default,  # Nominal recurrence for the out-proj shrink factor L.
+    )
+    model = ArcNeuron(config)
+    return model, config
+
+
 def main() -> None:
     args = parse_args()  # Read every experiment choice before touching random state, files, or accelerator memory.
     if args.grad_accum <= 0:  # Gradient accumulation must contain at least one microbatch.
@@ -296,23 +348,17 @@ def main() -> None:
     if args.resume:  # Resume must restore the exact tokenizer and architecture that created the checkpoint's learned tensor geometry.
         checkpoint = torch.load(args.resume, map_location=device, weights_only=False)  # map_location makes one checkpoint portable across current devices.
         tokenizer = ArcTokenizer.from_bytes(checkpoint["tokenizer_model"])  # Token IDs must retain exactly the same meaning as the saved embedding rows.
-        config = ArcNeuronConfig(**checkpoint["model_config"])  # The checkpoint, not today's CLI architecture defaults, defines the resumed neural graph.
+        resumed_arch = checkpoint.get("arch", "arcneuron")  # The saved arch tag selects which architecture class reconstructs the resumed tensor graph.
+        if resumed_arch == "baseline":  # A resumed baseline checkpoint must rebuild the non-recurrent stack, not the recurrent ArcNeuron.
+            from baseline_transformer import BaselineConfig
+            config = BaselineConfig(**checkpoint["model_config"])  # Reconstruct from the saved baseline dimensions.
+        else:  # Normal ArcNeuron resume uses the recurrent-depth architecture.
+            config = ArcNeuronConfig(**checkpoint["model_config"])  # The checkpoint, not today's CLI architecture defaults, defines the resumed neural graph.
         context = config.max_seq_len  # Context length is part of the saved architecture and therefore cannot be silently recalculated during resume.
     else:  # A fresh run first learns only statistical subword compression from the supplied text.
-        tokenizer = ArcTokenizer.train(args.data, vocab_size=args.vocab_size)  # SentencePiece sees raw text only and adds no semantic dictionary.
+        tokenizer = ArcTokenizer.train(args.data, vocab_size=args.vocab_size, character_coverage=args.character_coverage)  # SentencePiece sees raw text only and adds no semantic dictionary; coverage may be lowered to fit a multilingual corpus inside a small vocab.
         provisional_train_tokens = encode_documents(tokenizer, train_documents)  # Real token count after tokenization is required before automatic context sizing can be honest.
         context = resolve_context(args.context, provisional_train_tokens.numel())  # Automatic context now comes from what the model will actually see rather than a fixed notebook guess.
-        config = ArcNeuronConfig(  # Every value below changes the neural tensor graph and is therefore stored in the checkpoint.
-            vocab_size=tokenizer.vocab_size,  # Embedding rows exactly match the tokenizer's actual vocabulary size.
-            dim=args.dim,  # Use the explicitly requested hidden width.
-            n_heads=args.heads,  # Use the explicitly requested query-head count.
-            n_kv_heads=args.kv_heads,  # Use the explicitly requested grouped-query key/value-head count.
-            ffn_dim=args.ffn_dim,  # Use the explicitly requested SwiGLU hidden width.
-            max_seq_len=context,  # Automatic sizing may choose context from data, but once training begins this is part of the model architecture.
-            prelude_layers=args.prelude_layers,  # Configure non-recurrent input depth.
-            core_layers=args.core_layers,  # Configure shared recurrent blocks per iteration.
-            coda_layers=args.coda_layers,  # Configure non-recurrent output depth.
-        )
 
     train_tokens = encode_documents(tokenizer, train_documents)  # Only these token IDs contribute gradients.
     val_tokens = encode_documents(tokenizer, val_documents)  # These token IDs are reserved for held-out validation and early stopping.
@@ -323,7 +369,15 @@ def main() -> None:
     eval_every = resolve_cadence(args.eval_every, total_steps, 10, "--eval-every")  # Automatic validation happens roughly ten times across whatever run length the data produced.
     save_every = resolve_cadence(args.save_every, total_steps, 5, "--save-every")  # Automatic snapshots happen roughly five times without controlling model quality.
 
-    model = ArcNeuron(config).to(device)  # Move the complete neural architecture to the selected accelerator.
+    if args.resume:  # Resume rebuilds the architecture object that matches the saved tensor geometry before loading weights.
+        if resumed_arch == "baseline":  # The non-recurrent baseline must reconstruct its own stack class.
+            from baseline_transformer import BaselineTransformer
+            model = BaselineTransformer(config)
+        else:  # Normal resume reconstructs the recurrent ArcNeuron.
+            model = ArcNeuron(config)
+    else:  # A fresh run builds the requested architecture from the resolved tokenizer and context.
+        model, config = build_model(args, tokenizer, context)  # build_model returns the architecture object and its config so the checkpoint stores the right shape metadata.
+    model = model.to(device)  # Move the complete neural architecture to the selected accelerator.
     optimizer = make_optimizer(model, args.lr, args.weight_decay)  # AdamW owns every neural parameter and no external reasoning state exists.
     start_step = 0  # A fresh run begins before the first optimizer update.
     best_val_loss = math.inf  # The first validation measurement necessarily becomes the initial best checkpoint.
@@ -340,9 +394,15 @@ def main() -> None:
         if "python_random_state" in checkpoint:  # Format-one checkpoints may or may not carry every newer metadata field.
             random.setstate(checkpoint["python_random_state"])  # Resume recurrent-depth sampling from the saved Python stream when available.
         if "torch_random_state" in checkpoint:  # Restore CPU tensor randomness only when the checkpoint provides it.
-            torch.set_rng_state(checkpoint["torch_random_state"])  # Random corpus windows then continue from the saved sequence.
+            try:  # Cross-version or cross-device checkpoints may store the state in an incompatible tensor type.
+                torch.set_rng_state(checkpoint["torch_random_state"])  # Random corpus windows then continue from the saved sequence.
+            except (TypeError, RuntimeError):  # A stale RNG state is not fatal; reseeding from --seed below keeps training reproducible.
+                pass  # Discard the incompatible RNG state rather than aborting a valid weight resume.
         if torch.cuda.is_available() and "cuda_random_state" in checkpoint:  # CUDA exact continuation is possible when its generator state was saved.
-            torch.cuda.set_rng_state_all(checkpoint["cuda_random_state"])  # Restore every visible CUDA random generator.
+            try:  # The CUDA state may be incompatible across GPU types or driver versions.
+                torch.cuda.set_rng_state_all(checkpoint["cuda_random_state"])  # Restore every visible CUDA random generator.
+            except (TypeError, RuntimeError):  # As above, a stale CUDA state should not block resuming the learned weights.
+                pass  # Discard the incompatible CUDA RNG state.
 
     if start_step >= total_steps:  # Automatic scheduling may correctly conclude that an already-trained checkpoint has consumed its intended token budget.
         raise ValueError(f"checkpoint is already at step {start_step}, not below planned total step count {total_steps}")
