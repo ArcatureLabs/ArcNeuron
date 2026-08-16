@@ -24,12 +24,14 @@ class ArcTokenizer:
         self._processor = spm.SentencePieceProcessor(model_proto=self._model_bytes)  # Load the complete tokenizer directly from memory.
 
     @classmethod
-    def train(cls, corpus_path: str | Path, vocab_size: int = 8192) -> "ArcTokenizer":
+    def train(cls, corpus_path: str | Path, vocab_size: int = 8192, character_coverage: float = 1.0) -> "ArcTokenizer":
         corpus_path = Path(corpus_path)  # Normalize strings and Path objects to one representation.
         if not corpus_path.is_file():  # Tokenizer training must fail loudly when the corpus path is wrong.
             raise FileNotFoundError(corpus_path)
         if vocab_size < 512:  # Byte fallback itself consumes 256 byte symbols plus SentencePiece meta symbols.
             raise ValueError("vocab_size must be at least 512 when byte fallback is enabled")
+        if not 0.0 < character_coverage <= 1.0:  # Coverage must reserve some characters; byte fallback covers the rest.
+            raise ValueError("character_coverage must be in the interval (0, 1]")
         with TemporaryDirectory(prefix="arcneuron-tokenizer-") as temp_dir:  # All intermediate SentencePiece files disappear when this block ends.
             model_prefix = Path(temp_dir) / "arcneuron"  # SentencePiece derives .model and .vocab paths from this temporary prefix.
             spm.SentencePieceTrainer.train(  # Train only statistical text pieces; no dictionary or semantic annotation is supplied.
@@ -37,7 +39,7 @@ class ArcTokenizer:
                 model_prefix=str(model_prefix),  # Write the temporary model beside the temporary vocabulary file.
                 vocab_size=vocab_size,  # Cap the number of subword pieces used by ArcNeuron's embedding table.
                 model_type="bpe",  # BPE keeps tokenization simple, fast, deterministic, and widely understood.
-                character_coverage=1.0,  # Keep every character observed in the corpus before falling back to raw bytes.
+                character_coverage=character_coverage,  # Keep at least this fraction of characters; byte fallback represents the rest so a small vocab can survive a multilingual corpus.
                 byte_fallback=True,  # Any unseen Unicode text remains losslessly representable through UTF-8 byte pieces.
                 normalization_rule_name="identity",  # Preserve the user's exact text instead of silently rewriting Unicode forms.
                 remove_extra_whitespaces=False,  # Whitespace itself can carry formatting information and therefore must not be collapsed.
