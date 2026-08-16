@@ -164,6 +164,8 @@ def autocast_context(device: torch.device, dtype: torch.dtype):
 
 
 def save_checkpoint(path: str | Path, model: ArcNeuron, optimizer: torch.optim.Optimizer, tokenizer: ArcTokenizer, tune_step: int, base_step: int, tuning_plan: dict[str, int | float | str]) -> None:
+    path = Path(path)  # Normalize so the parent-directory creation below works on any input type.
+    path.parent.mkdir(parents=True, exist_ok=True)  # Create the checkpoint directory so deep volume paths work without pre-creating them.
     checkpoint = {  # The tuned checkpoint remains independently runnable without the base checkpoint sitting beside it.
         "format": 2,  # Format two includes transparent data-aware tuning metadata while model reconstruction remains unchanged.
         "model_config": asdict(model.config),  # generate.py reconstructs the exact neural tensor graph from these dimensions.
